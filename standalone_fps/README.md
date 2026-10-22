@@ -28,3 +28,9 @@ Appearance is fixed in code: layout in `layout_bar_labels()`
 `overlay::kStandaloneFontPt` (`source/shellui/include/overlay_layout.hpp`),
 colour/weight in `source/shellui/src/shellui_overlay_widgets.cpp`, enabled
 metrics/position in `fps_overlay_only_main()` (`source/shellui/src/prx.cpp`).
+
+Stopping the payload: on a clean exit (SIGTERM/SIGINT) it publishes a shutdown
+marker and the overlay removes all its widgets at once. If the payload is
+killed outright, the overlay notices that the heartbeat (the payload publishes
+at least once a second) stopped for 4 s and removes its widgets too. Starting
+the payload again brings the overlay back without re-injecting.

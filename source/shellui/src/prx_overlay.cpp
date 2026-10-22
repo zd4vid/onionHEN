@@ -593,6 +593,33 @@ bool sample_cpu_usage(unsigned int idle_tid[kCpuCores], int& current_bank,
   return false;
 }
 
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+/* False once the payload has exited (clean shutdown marker) or stopped
+ * publishing (killed). The overlay then removes all its widgets so nothing
+ * stays on screen; it comes back by itself if the payload is started again. */
+bool fps_payload_alive() {
+  static OnionFpsSample *map;
+  static bool last = true; /* answer to reuse if the seqlock read races */
+  if (map == nullptr || map == reinterpret_cast<OnionFpsSample *>(MAP_FAILED)) {
+    map = onion_fps_map_ro();
+    if (map == reinterpret_cast<OnionFpsSample *>(MAP_FAILED)) {
+      map = nullptr;
+      return last = false;
+    }
+  }
+  OnionFpsSample local;
+  if (onion_fps_seqlock_load(map, &local) != 0)
+    return last;
+  if (local.magic != ONION_FPS_MAGIC || local.pid == ONION_FPS_PID_SHUTDOWN)
+    return last = false;
+  const uint64_t now = onion_fps_realtime_ns();
+  if (local.unix_ns == 0 || now < local.unix_ns ||
+      now - local.unix_ns > ONION_FPS_HEARTBEAT_TIMEOUT_NS)
+    return last = false;
+  return last = true;
+}
+#endif
+
 void format_fps_text(char *buf, size_t buf_sz) {
   if (!buf || buf_sz == 0)
     return;
@@ -694,6 +721,19 @@ void OnRender_Hook(MonoObject* instance) {
   static char ip_address[64] = {};
   static char fan_str[32] = "--%";
   static char fps_str[16] = "--";
+
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+  /* Payload gone (exited or killed): take the overlay down and stay idle. */
+  if (!fps_payload_alive()) {
+    if (inited) {
+      RemoveGameWidget(REMOVE_ALL_OVERLAYS);
+      inited = false;
+      frames_until_init = kOverlayInitDelayFrames;
+    }
+    OnRender_orig(instance);
+    return;
+  }
+#endif
 
   if (!inited) {
     if (frames_until_init > 0) {
