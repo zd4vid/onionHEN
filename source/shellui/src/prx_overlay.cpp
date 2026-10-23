@@ -649,18 +649,29 @@ void tick_shell_fps() {
 }
 #endif
 
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+/* True when the live payload is publishing but reports no running game. */
+bool fps_no_game_running() {
+  static OnionFpsSample *map;
+  if (map == nullptr || map == reinterpret_cast<OnionFpsSample *>(MAP_FAILED)) {
+    map = onion_fps_map_ro();
+    if (map == reinterpret_cast<OnionFpsSample *>(MAP_FAILED)) {
+      map = nullptr;
+      return false;
+    }
+  }
+  OnionFpsSample local;
+  if (onion_fps_seqlock_load(map, &local) != 0)
+    return false;
+  return local.magic == ONION_FPS_MAGIC && local.pid != ONION_FPS_PID_SHUTDOWN &&
+         local.title_id[0] == '\0';
+}
+#endif
+
 void format_fps_text(char *buf, size_t buf_sz) {
   if (!buf || buf_sz == 0)
     return;
   OnionFpsSample sample {};
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
-  /* Alive payload but no game (empty title id): show the shell's own rate. */
-  if (onion_fps_read(&sample) == 0 && !sample.valid &&
-      sample.title_id[0] == '\0' && g_shell_fps >= 1.f) {
-    snprintf(buf, buf_sz, "%.2f", g_shell_fps);
-    return;
-  }
-#endif
   if (onion_fps_read(&sample) == 0 && sample.valid && sample.fps >= 1.f) {
 #ifdef ONIONHEN_FPS_OVERLAY_ONLY
     snprintf(buf, buf_sz, "%.2f", sample.fps);
@@ -671,6 +682,14 @@ void format_fps_text(char *buf, size_t buf_sz) {
       snprintf(buf, buf_sz, "%.1f", sample.fps);
 #endif
   } else {
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+    /* onion_fps_read() fails for any invalid sample, so ask the raw sample
+     * whether a game is running: no title id means home screen. */
+    if (fps_no_game_running() && g_shell_fps >= 1.f) {
+      snprintf(buf, buf_sz, "%.2f", g_shell_fps);
+      return;
+    }
+#endif
     snprintf(buf, buf_sz, "--");
   }
 }
