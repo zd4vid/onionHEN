@@ -750,6 +750,141 @@ void init_overlay_resource_names() {
   appsystem_dll = base64_decode("U2NlLlZzaC5TaGVsbFVJLkFwcFN5c3RlbS5kbGw=");
 }
 
+/* ---- Home-screen scene discovery (temporary diagnostics) -----------------
+ * The module's log file is not reliable from inside SceShellUI, so findings are
+ * shown as toasts (and also logged). Lists the AppSystem types whose names look
+ * scene/layer related, and the fields/methods of LayerManager, so the real
+ * home-screen scene path can be identified. Read-only reflection. */
+namespace scene_dump {
+
+typedef void* (*get_iter_fn)(MonoClass*, void**);
+typedef const char* (*name_fn)(void*);
+typedef const char* (*class_name_fn)(MonoClass*);
+typedef const void* (*table_info_fn)(MonoImage*, int);
+typedef int (*table_rows_fn)(const void*);
+typedef MonoClass* (*class_get_fn)(MonoImage*, uint32_t);
+
+get_iter_fn mono_class_get_fields_p = nullptr;
+get_iter_fn mono_class_get_methods_p = nullptr;
+name_fn mono_field_get_name_p = nullptr;
+name_fn mono_method_get_name_p = nullptr;
+class_name_fn mono_class_get_name_p = nullptr;
+class_name_fn mono_class_get_namespace_p = nullptr;
+table_info_fn mono_image_get_table_info_p = nullptr;
+table_rows_fn mono_table_info_get_rows_p = nullptr;
+class_get_fn mono_class_get_p = nullptr;
+
+constexpr size_t kChunk = 150;
+constexpr int kMaxToasts = 14;
+int g_toasts = 0;
+std::string g_buf;
+
+void flush(const char* tag) {
+  if (g_buf.empty())
+    return;
+  if (g_toasts < kMaxToasts) {
+    ++g_toasts;
+    std::string line = std::string(tag) + ": " + g_buf;
+    LOG_INFO("scene dump: %s", line.c_str());
+    notify("%s", line.c_str());
+    sleep(3);
+  }
+  g_buf.clear();
+}
+
+void add(const char* tag, const char* item) {
+  if (!item || !*item)
+    return;
+  if (g_buf.size() + strlen(item) + 2 > kChunk)
+    flush(tag);
+  if (!g_buf.empty())
+    g_buf += ", ";
+  g_buf += item;
+}
+
+bool interesting(const char* n) {
+  static const char* const kWords[] = {"Scene", "Layer", "Container", "Overlay",
+                                       "Impose", "Home", "Dialog", "Toast"};
+  for (const char* w : kWords)
+    if (strstr(n, w))
+      return true;
+  return false;
+}
+
+void run(pid_t pid, MonoImage* image) {
+  const int lib = get_module_handle(pid, "libmonosgen-2.0.sprx");
+  /* KERNEL_DLSYM stringifies the variable name, so resolve names by hand. */
+  *(void**)&mono_class_get_fields_p = (void*)kernel_dynlib_dlsym(-1, lib, "mono_class_get_fields");
+  *(void**)&mono_class_get_methods_p = (void*)kernel_dynlib_dlsym(-1, lib, "mono_class_get_methods");
+  *(void**)&mono_field_get_name_p = (void*)kernel_dynlib_dlsym(-1, lib, "mono_field_get_name");
+  *(void**)&mono_method_get_name_p = (void*)kernel_dynlib_dlsym(-1, lib, "mono_method_get_name");
+  *(void**)&mono_class_get_name_p = (void*)kernel_dynlib_dlsym(-1, lib, "mono_class_get_name");
+  *(void**)&mono_class_get_namespace_p = (void*)kernel_dynlib_dlsym(-1, lib, "mono_class_get_namespace");
+  *(void**)&mono_image_get_table_info_p = (void*)kernel_dynlib_dlsym(-1, lib, "mono_image_get_table_info");
+  *(void**)&mono_table_info_get_rows_p = (void*)kernel_dynlib_dlsym(-1, lib, "mono_table_info_get_rows");
+  *(void**)&mono_class_get_p = (void*)kernel_dynlib_dlsym(-1, lib, "mono_class_get");
+
+  notify("scene dump start (look for toasts)");
+  sleep(3);
+
+  /* 1) AppSystem types that look scene/layer related. */
+  if (mono_image_get_table_info_p && mono_table_info_get_rows_p &&
+      mono_class_get_p && mono_class_get_name_p) {
+    const void* tbl = mono_image_get_table_info_p(image, 2 /* MONO_TABLE_TYPEDEF */);
+    const int rows = tbl ? mono_table_info_get_rows_p(tbl) : 0;
+    LOG_INFO("scene dump: AppSystem has %d types", rows);
+    for (int i = 1; i <= rows; ++i) {
+      MonoClass* k = mono_class_get_p(image, 0x02000000u | (uint32_t)i);
+      if (!k)
+        continue;
+      const char* n = mono_class_get_name_p(k);
+      if (n && interesting(n))
+        add("types", n);
+    }
+    flush("types");
+  } else {
+    notify("scene dump: type enumeration symbols missing");
+    sleep(3);
+  }
+
+  /* 2) LayerManager members. */
+  MonoClass* lm = mono_class_from_name(image, "Sce.Vsh.ShellUI.AppSystem", "LayerManager");
+  if (lm && mono_class_get_fields_p && mono_field_get_name_p) {
+    void* it = nullptr;
+    while (void* f = mono_class_get_fields_p(lm, &it))
+      add("LM fields", mono_field_get_name_p(f));
+    flush("LM fields");
+  }
+  if (lm && mono_class_get_methods_p && mono_method_get_name_p) {
+    void* it = nullptr;
+    while (void* m = mono_class_get_methods_p(lm, &it))
+      add("LM methods", mono_method_get_name_p(m));
+    flush("LM methods");
+  }
+
+  /* 3) Which candidate paths resolve at all (non-null)? */
+  static const char* const kPaths[] = {
+      "Game", "Home", "HomeScreen", "HomeMenu", "Menu", "Main", "Root",
+      "System", "SystemOverlay", "SystemUI", "Impose", "Overlay", "Top",
+      "system_overlay_scene", "system_ui_scene", "Dialog", "Notification"};
+  MonoMethod* find = mono_class_get_method_from_name(lm, "FindContainerSceneByPath", 1);
+  if (find) {
+    for (const char* path : kPaths) {
+      void* args[1] = {mono_string_new(mono_domain_get(), path)};
+      MonoObject* exc = nullptr;
+      MonoObject* r = mono_runtime_invoke(find, nullptr, args, &exc);
+      if (!exc && r)
+        add("resolves", path);
+    }
+    flush("resolves");
+    if (g_toasts < kMaxToasts) {
+      notify("scene dump done (resolves: none shown = no candidate matched)");
+    }
+  }
+}
+
+} // namespace scene_dump
+
 int fps_overlay_only_main() {
   /* This module runs inside SceShellUI, a separate process from the payload, so
    * it has its own log state. Append (O_APPEND) to the payload's log so scene
@@ -830,6 +965,7 @@ int fps_overlay_only_main() {
   setup_proc_hooks();
   shellui_hooks_publish_ready();
   hooked = true;
+  scene_dump::run(pid, images.app_system);
   run_keep_alive();
   return 0;
 }
