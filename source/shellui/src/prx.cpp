@@ -751,6 +751,13 @@ void init_overlay_resource_names() {
 }
 
 int fps_overlay_only_main() {
+  /* This module runs inside SceShellUI, a separate process from the payload, so
+   * it has its own log state. Append (O_APPEND) to the payload's log so scene
+   * probing results show up next to the payload lines. */
+  onion_log_configure("FPS-UI", "/data/onion_fps.log");
+  onion_log_set_level(ONION_LOG_INFO);
+  LOG_INFO("overlay module starting in SceShellUI");
+
   const pid_t pid = getpid();
   AuthIdGuard auth(pid, set_ucred_to_ptrace());
 
@@ -786,8 +793,8 @@ int fps_overlay_only_main() {
     return -1;
 
   /* Home-screen experiment: try the system scenes first so the overlay can show
-   * outside games, then fall back to "Game" (known to work in-game). The scene
-   * that resolved is logged as "overlay scene: <path>" in /data/onion_fps.log. */
+   * outside games, then fall back to "Game" (known to work in-game). Each probe
+   * and the chosen scene are logged to /data/onion_fps.log (tag FPS-UI). */
   static const char* const kSceneCandidates[] = {
       "system_overlay_scene", "system_ui_scene", "Game"};
   const char* chosen_scene = nullptr;
