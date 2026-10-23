@@ -1,6 +1,7 @@
 /* Copyright (C) 2025 OnionHEN / LightningMods — P0 split. */
 
 
+#include <time.h>
 #include <algorithm>
 #include "hooked_funcs.hpp"
 #include "ipc.hpp"
@@ -620,10 +621,46 @@ bool fps_payload_alive() {
 }
 #endif
 
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+/* Frame rate of the shell itself, measured from how often the per-frame
+ * PUI.Application.Update hook runs. Used on the home screen, where no game is
+ * running and the payload has no scanout sample to publish. */
+float g_shell_fps = 0.f;
+
+void tick_shell_fps() {
+  static uint64_t window_start_ns = 0;
+  static unsigned frames = 0;
+  struct timespec ts {};
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  const uint64_t now = static_cast<uint64_t>(ts.tv_sec) * 1000000000ull +
+                       static_cast<uint64_t>(ts.tv_nsec);
+  if (window_start_ns == 0) {
+    window_start_ns = now;
+    frames = 0;
+    return;
+  }
+  ++frames;
+  const uint64_t dt = now - window_start_ns;
+  if (dt >= 500000000ull) { /* refresh twice a second */
+    g_shell_fps = static_cast<float>(frames) * 1e9f / static_cast<float>(dt);
+    window_start_ns = now;
+    frames = 0;
+  }
+}
+#endif
+
 void format_fps_text(char *buf, size_t buf_sz) {
   if (!buf || buf_sz == 0)
     return;
   OnionFpsSample sample {};
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+  /* Alive payload but no game (empty title id): show the shell's own rate. */
+  if (onion_fps_read(&sample) == 0 && !sample.valid &&
+      sample.title_id[0] == '\0' && g_shell_fps >= 1.f) {
+    snprintf(buf, buf_sz, "%.2f", g_shell_fps);
+    return;
+  }
+#endif
   if (onion_fps_read(&sample) == 0 && sample.valid && sample.fps >= 1.f) {
 #ifdef ONIONHEN_FPS_OVERLAY_ONLY
     snprintf(buf, buf_sz, "%.2f", sample.fps);
@@ -733,6 +770,7 @@ void OnRender_Hook(MonoObject* instance) {
     OnRender_orig(instance);
     return;
   }
+  tick_shell_fps();
 #endif
 
   if (!inited) {
