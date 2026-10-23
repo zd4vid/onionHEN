@@ -792,24 +792,9 @@ int fps_overlay_only_main() {
   if (!load_overlay_images(images))
     return -1;
 
-  /* Home-screen experiment: try the system scenes first so the overlay can show
-   * outside games, then fall back to "Game" (known to work in-game). Each probe
-   * and the chosen scene are logged to /data/onion_fps.log (tag FPS-UI). */
-  static const char* const kSceneCandidates[] = {"SystemOverlay", "Impose",
-                                                 "Game"};
-  const char* chosen_scene = nullptr;
-  for (const char* path : kSceneCandidates) {
-    Game = nullptr;
-    if (resolve_game_container(images.app_system, path, false) && Game) {
-      chosen_scene = path;
-      break;
-    }
-    LOG_WARN("overlay scene '%s' not found", path);
-  }
-  if (!chosen_scene)
+  /* "SystemOverlay" is drawn above both games and the home screen. */
+  if (!resolve_game_container(images.app_system, "SystemOverlay"))
     return -1;
-  LOG_INFO("overlay scene: %s", chosen_scene);
-  notify("%s", (std::string("FPS overlay scene: ") + chosen_scene).c_str());
 
   char probe[kMprotectProbeSize];
   has_hv_bypass = (sceKernelMprotect(probe, sizeof(probe), kProtRwx) == 0);

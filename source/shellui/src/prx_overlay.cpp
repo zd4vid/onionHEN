@@ -739,11 +739,9 @@ void format_fps_text(char *buf, size_t buf_sz) {
 #ifdef ONIONHEN_FPS_OVERLAY_ONLY
 /* RAM/VRAM page-table stats. In games the system VM (kVmSystem) reports them,
  * but on the home screen it can report 0/0, so fall back to the other VM ids
- * and use the first one with a non-zero total. If none do, show a one-time
- * toast with the raw values so the right VM can be identified. */
+ * and use the first one with a non-zero total. */
 void get_mem_stats(int type, Memory &m) {
   static const int kVms[] = {kVmSystem, 0, 2, 3};
-  static bool reported[3] = {};
   for (int vm : kVms) {
     int total = 0, free_pages = 0;
     if (get_page_table_stats(vm, type, &total, &free_pages) == -1 || total <= 0)
@@ -754,18 +752,6 @@ void get_mem_stats(int type, Memory &m) {
     return;
   }
   m.Used = m.Free = m.Total = 0;
-  if (type >= 0 && type < 3 && !reported[type]) {
-    reported[type] = true;
-    char msg[256];
-    int n = std::snprintf(msg, sizeof(msg), "mem type %d all zero:", type);
-    for (int vm : kVms) {
-      int t = -1, f = -1;
-      const int rc = get_page_table_stats(vm, type, &t, &f);
-      n += std::snprintf(msg + n, sizeof(msg) - n, " vm%d=%d/%d/%d", vm, rc, t, f);
-    }
-    LOG_WARN("%s", msg);
-    notify("%s", msg);
-  }
 }
 #endif
 
