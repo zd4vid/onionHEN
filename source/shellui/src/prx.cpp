@@ -433,36 +433,41 @@ bool load_shell_images(ShellImages& out) {
 // Phase 6: resolve Game container scene
 // ---------------------------------------------------------------------------
 
-bool resolve_game_container(MonoImage* app_system) {
+bool resolve_game_container(MonoImage* app_system, const char* scene_path = "Game",
+                            bool notify_on_fail = true) {
   MonoClass* layer_manager =
       mono_class_from_name(app_system, "Sce.Vsh.ShellUI.AppSystem", "LayerManager");
   if (!layer_manager) {
-    notify("notify.hook.layer_manager");
+    if (notify_on_fail)
+      notify("notify.hook.layer_manager");
     return false;
   }
 
   MonoMethod* find =
       mono_class_get_method_from_name(layer_manager, "FindContainerSceneByPath", 1);
   if (!find) {
-    notify("notify.hook.find_scene");
+    if (notify_on_fail)
+      notify("notify.hook.find_scene");
     return false;
   }
 
-  MonoString* path_arg = mono_string_new(mono_domain_get(), "Game");
+  MonoString* path_arg = mono_string_new(mono_domain_get(), scene_path);
   void* args[1] = {path_arg};
   MonoObject* exception = nullptr;
   Game = mono_runtime_invoke(find, nullptr, args, &exception);
 
   if (exception) {
-    notify("notify.hook.find_scene_exc");
+    if (notify_on_fail)
+      notify("notify.hook.find_scene_exc");
     return false;
   }
   if (!Game) {
-    notify("notify.hook.game_scene");
+    if (notify_on_fail)
+      notify("notify.hook.game_scene");
     return false;
   }
 
-  LOG_DEBUG("Game ContainerScene: %p", static_cast<void *>(Game));
+  LOG_DEBUG("ContainerScene '%s': %p", scene_path, static_cast<void *>(Game));
   return true;
 }
 
@@ -777,8 +782,26 @@ int fps_overlay_only_main() {
   mono_thread_attach(Root_Domain);
 
   ShellImages images;
-  if (!load_overlay_images(images) || !resolve_game_container(images.app_system))
+  if (!load_overlay_images(images))
     return -1;
+
+  /* Home-screen experiment: try the system scenes first so the overlay can show
+   * outside games, then fall back to "Game" (known to work in-game). The scene
+   * that resolved is logged as "overlay scene: <path>" in /data/onion_fps.log. */
+  static const char* const kSceneCandidates[] = {
+      "system_overlay_scene", "system_ui_scene", "Game"};
+  const char* chosen_scene = nullptr;
+  for (const char* path : kSceneCandidates) {
+    Game = nullptr;
+    if (resolve_game_container(images.app_system, path, false) && Game) {
+      chosen_scene = path;
+      break;
+    }
+    LOG_WARN("overlay scene '%s' not found", path);
+  }
+  if (!chosen_scene)
+    return -1;
+  LOG_INFO("overlay scene: %s", chosen_scene);
 
   char probe[kMprotectProbeSize];
   has_hv_bypass = (sceKernelMprotect(probe, sizeof(probe), kProtRwx) == 0);
