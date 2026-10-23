@@ -158,9 +158,12 @@ static void *safe_sampler_thread(void *) {
     std::string tid;
     int app_id = 0;
     if (!Get_Running_App_TID(tid, app_id)) {
-      /* No app running (home screen): keep sampling the scanout counter so the
-       * overlay shows the shell's own refresh rate instead of "--". */
-      tid = "HOME";
+      cached_tid.clear();
+      have = false;
+      wn = wi = 0;
+      publish_sample(false, nullptr, 0.f);
+      sleep(1);
+      continue;
     }
     if (tid != cached_tid) {
       cached_tid = tid;
