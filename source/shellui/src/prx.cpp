@@ -751,13 +751,6 @@ void init_overlay_resource_names() {
 }
 
 int fps_overlay_only_main() {
-  /* This module runs inside SceShellUI, a separate process from the payload, so
-   * it has its own log state. Append (O_APPEND) to the payload's log so scene
-   * probing results show up next to the payload lines. */
-  onion_log_configure("FPS-UI", "/data/onion_fps.log");
-  onion_log_set_level(ONION_LOG_INFO);
-  LOG_INFO("overlay module starting in SceShellUI");
-
   const pid_t pid = getpid();
   AuthIdGuard auth(pid, set_ucred_to_ptrace());
 
