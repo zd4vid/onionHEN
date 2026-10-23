@@ -49,6 +49,19 @@ extern uint8_t fps_overlay_elf_start[];
 bool fps_kstuff_active(void);
 }
 
+/* This payload runs without the bootstrapper/daemon, so nothing else waits for
+ * kstuff. Poll the capability directly; injecting into SceShellUI without it
+ * is not safe. */
+static bool wait_for_kstuff(unsigned timeout_sec) {
+  for (unsigned waited = 0;; ++waited) {
+    if (fps_kstuff_active())
+      return true;
+    if (waited >= timeout_sec)
+      return false;
+    sleep(1);
+  }
+}
+
 /* Keeps the overlay injected into SceShellUI. Re-injects after a ShellUI
  * restart (new pid, e.g. Rest Mode resume). */
 static void *injector_thread(void *) {
@@ -97,6 +110,7 @@ bool Get_Running_App_TID(std::string &title_id, int &BigAppid) {
  * game memory, kernel memory, or PS4 compatibility hooks. */
 static constexpr unsigned kWarmupSec = 0;
 static constexpr useconds_t kSafeSampleUs = 100000; /* 10 Hz */
+static constexpr unsigned kKstuffWaitSec = 20;
 
 static double mono_sec() {
   struct timespec ts{};
@@ -341,13 +355,14 @@ int main() {
 
   LOG_INFO("standalone fps counter started (safe scanout-only mode + overlay)");
 
-  /* kstuff is optional. With it, userland mprotect(RWX) works; without it the
-   * detour code falls back to a kernel mprotect. If the console's hypervisor
-   * refuses both, injection fails and is retried (see the log). */
-  if (fps_kstuff_active())
-    LOG_INFO("kstuff detected");
-  else
-    LOG_WARN("kstuff not detected; trying to inject anyway");
+  /* Preflight 1: kstuff must be running. */
+  if (!wait_for_kstuff(kKstuffWaitSec)) {
+    LOG_ERROR("kstuff is not running (mprotect probe failed after %us); "
+              "load kstuff first, then fps_counter.elf. Not injecting.",
+              kKstuffWaitSec);
+    return 1;
+  }
+  LOG_INFO("kstuff detected");
 
   /* Preflight 2: never inject twice. A live overlay is marked ready for the
    * current SceShellUI pid; the injector thread skips it, and a new ShellUI
