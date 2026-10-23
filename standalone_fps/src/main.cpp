@@ -27,6 +27,7 @@
 #include <ctime>
 #include <pthread.h>
 #include <signal.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -336,7 +337,25 @@ static void on_term(int) {
   g_stack_shutting_down.store(true, std::memory_order_release);
 }
 
+/* Loaders hand the payload their connection as stdin/stdout/stderr and may wait
+ * for it to close (an on-console payload manager blocks its UI on that and the
+ * system reports an error after ~10 s; a PC sender does not care). Point the
+ * standard descriptors at /dev/null so the loader's end is released, and ignore
+ * SIGPIPE/SIGHUP so a loader that goes away cannot kill the payload. */
+static void detach_from_loader(void) {
+  signal(SIGPIPE, SIG_IGN);
+  signal(SIGHUP, SIG_IGN);
+  const int fd = open("/dev/null", O_RDWR);
+  if (fd < 0)
+    return;
+  for (int target = 0; target <= 2; ++target)
+    (void)dup2(fd, target);
+  if (fd > 2)
+    close(fd);
+}
+
 int main() {
+  detach_from_loader();
   mkdir(ONION_SYSTEM_TMP_ROOT, 0777);
   onion_log_configure("FPS", "/data/onion_fps.log");
   onion_log_set_level(ONION_LOG_INFO);
