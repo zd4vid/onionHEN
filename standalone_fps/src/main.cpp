@@ -17,7 +17,9 @@
 #include <onion/proc_query.h>
 #include <onion/system_tmp.h>
 
+#include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -117,6 +119,119 @@ static double mono_sec() {
          static_cast<double>(ts.tv_nsec) * 1e-9;
 }
 
+
+/* ---- Game display name ------------------------------------------------------
+ * Read from the app's metadata (param.json for PS5, param.sfo for PS4) once per
+ * title change and published with every sample for the overlay's title row. */
+static bool read_small_file(const char *path, std::string &out) {
+  FILE *f = std::fopen(path, "rb");
+  if (!f)
+    return false;
+  out.clear();
+  char buf[4096];
+  size_t n;
+  while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) {
+    out.append(buf, n);
+    if (out.size() > 512 * 1024)
+      break;
+  }
+  std::fclose(f);
+  return !out.empty();
+}
+
+static std::string json_title_name(const std::string &j) {
+  size_t p = j.find("\"titleName\"");
+  if (p == std::string::npos)
+    return "";
+  p = j.find(':', p);
+  if (p == std::string::npos)
+    return "";
+  p = j.find('"', p);
+  if (p == std::string::npos)
+    return "";
+  std::string r;
+  for (++p; p < j.size() && j[p] != '"'; ++p) {
+    if (j[p] == '\\' && p + 1 < j.size()) {
+      ++p;
+      if (j[p] == 'n' || j[p] == 't' || j[p] == 'r')
+        r += ' ';
+      else if (j[p] == 'u') /* keep it simple: skip \uXXXX */
+        p += 4;
+      else
+        r += j[p];
+    } else {
+      r += j[p];
+    }
+  }
+  return r;
+}
+
+static std::string sfo_title(const std::string &d) {
+  const auto *b = reinterpret_cast<const uint8_t *>(d.data());
+  const size_t n = d.size();
+  if (n < 20 || std::memcmp(b, "\0PSF", 4) != 0)
+    return "";
+  auto u16 = [&](size_t o) -> uint32_t { return b[o] | (b[o + 1] << 8); };
+  auto u32 = [&](size_t o) -> uint32_t {
+    return b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) |
+           (static_cast<uint32_t>(b[o + 3]) << 24);
+  };
+  const size_t key_tbl = u32(8), data_tbl = u32(12), count = u32(16);
+  for (size_t i = 0; i < count; ++i) {
+    const size_t e = 20 + 16 * i;
+    if (e + 16 > n)
+      break;
+    const size_t ko = key_tbl + u16(e);
+    const size_t doff = data_tbl + u32(e + 12);
+    const size_t len = u32(e + 4);
+    if (ko >= n || doff >= n)
+      continue;
+    const char *key = reinterpret_cast<const char *>(b + ko);
+    if (strnlen(key, n - ko) == 5 && std::memcmp(key, "TITLE", 5) == 0) {
+      const size_t take = std::min(len, n - doff);
+      return std::string(reinterpret_cast<const char *>(b + doff),
+                         strnlen(reinterpret_cast<const char *>(b + doff),
+                                 take));
+    }
+  }
+  return "";
+}
+
+static std::string resolve_title_name(const std::string &tid) {
+  static const char *kJson[] = {
+      "/system_data/priv/appmeta/%s/param.json",
+      "/system_data/priv/appmeta/external/%s/param.json",
+      "/system_ex/app/%s/sce_sys/param.json",
+      "/user/appmeta/%s/param.json",
+  };
+  static const char *kSfo[] = {
+      "/system_data/priv/appmeta/%s/param.sfo",
+      "/system_data/priv/appmeta/external/%s/param.sfo",
+      "/user/appmeta/%s/param.sfo",
+  };
+  char path[256];
+  std::string data;
+  for (const char *fmt : kJson) {
+    std::snprintf(path, sizeof path, fmt, tid.c_str());
+    if (read_small_file(path, data)) {
+      std::string name = json_title_name(data);
+      if (!name.empty())
+        return name;
+    }
+  }
+  for (const char *fmt : kSfo) {
+    std::snprintf(path, sizeof path, fmt, tid.c_str());
+    if (read_small_file(path, data)) {
+      std::string name = sfo_title(data);
+      if (!name.empty())
+        return name;
+    }
+  }
+  return "";
+}
+
+static std::string g_title_name; /* name of the title currently published */
+
 static void publish_sample(bool valid, const char *tid, float fps) {
   OnionFpsSample s{};
   s.pid = valid ? 1 : -1;
@@ -124,8 +239,10 @@ static void publish_sample(bool valid, const char *tid, float fps) {
   s.source = ONION_FPS_SRC_SCANOUT;
   s.fps = valid ? fps : 0.f;
   s.unix_ns = onion_fps_realtime_ns();
-  if (tid)
+  if (tid) {
     std::strncpy(s.title_id, tid, sizeof(s.title_id) - 1);
+    std::strncpy(s.title_name, g_title_name.c_str(), sizeof(s.title_name) - 1);
+  }
   onion::fps::publish(s);
 }
 
@@ -159,6 +276,7 @@ static void *safe_sampler_thread(void *) {
     int app_id = 0;
     if (!Get_Running_App_TID(tid, app_id)) {
       cached_tid.clear();
+      g_title_name.clear();
       have = false;
       wn = wi = 0;
       publish_sample(false, nullptr, 0.f);
@@ -167,6 +285,8 @@ static void *safe_sampler_thread(void *) {
     }
     if (tid != cached_tid) {
       cached_tid = tid;
+      g_title_name = resolve_title_name(tid);
+      LOG_INFO("safe fps: title name '%s'", g_title_name.c_str());
       started = mono_sec();
       have = false;
       wn = wi = 0;

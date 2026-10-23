@@ -1,6 +1,7 @@
 /* Copyright (C) 2025 OnionHEN / LightningMods — P0 split. */
 
 
+#include <cstring>
 #include <time.h>
 #include <algorithm>
 #include "hooked_funcs.hpp"
@@ -233,25 +234,28 @@ void set_bg_panel_rect(float x, float y, float w, float h) {
 #endif
 
 #ifdef ONIONHEN_FPS_OVERLAY_ONLY
+/* "Name / TITLEID" of the running game, empty on the home screen (no row). */
+char g_overlay_title[96] = {};
+
 /**
- * Standalone FPS overlay: two plain text rows, no background panel.
+ * Standalone FPS overlay: plain text rows, no background panel.
  *
  *   FPS: 59.94
  *   CPU: 43°C / GPU: 35°C
+ *   RAM: 18% 3102MB
+ *   VRAM: 15% 2574MB
+ *   FAN: 74%
+ *   IP: 192.168.1.99
+ *   Teardown / PPSA15246      (only while a game is running)
  *
- * Each row is a single label (id_fps_label / id_cpu_label); every other
- * overlay widget is parked off-screen. Usage percentages, RAM, IP and fan are
- * not shown in this build.
+ * Each row is a single label; widgets not used by a row are parked
+ * off-screen. Rows whose value is not available yet are skipped.
  */
 void layout_bar_labels(const char *fps_str, const char *cpu_temp,
                        const char *cpu_usage, const char *gpu_temp,
                        const char *gpu_usage, const char *ram_str,
                        const char *ip_str, const char *fan_str) {
   (void)cpu_usage;
-  (void)gpu_usage;
-  (void)ram_str;
-  (void)ip_str;
-  (void)fan_str;
 
   const float font_pt = static_cast<float>(onion::overlay::effective_font_pt(
       onion::overlay_font_pt(g_settings.overlay_font_size)));
@@ -261,7 +265,7 @@ void layout_bar_labels(const char *fps_str, const char *cpu_temp,
     const char *id;
     char text[96];
   };
-  Row rows[2];
+  Row rows[8];
   int nrows = 0;
 
   if (g_settings.overlay_fps) {
@@ -286,6 +290,23 @@ void layout_bar_labels(const char *fps_str, const char *cpu_temp,
       std::snprintf(rows[nrows].text, sizeof(rows[nrows].text), "GPU: %s", g);
     ++nrows;
   }
+
+  auto add_row = [&](const char *id, const char *fmt, const char *value) {
+    if (!value || !value[0] || nrows >= 8)
+      return;
+    rows[nrows].id = id;
+    std::snprintf(rows[nrows].text, sizeof(rows[nrows].text), fmt, value);
+    ++nrows;
+  };
+  if (g_settings.overlay_ram)
+    add_row("id_ram_label", "RAM: %s", ram_str);
+  if (g_settings.overlay_gpu)
+    add_row("id_ram_value", "VRAM: %s", gpu_usage);
+  if (g_settings.overlay_fan)
+    add_row("id_fan_label", "FAN: %s", fan_str);
+  if (g_settings.overlay_ip)
+    add_row("id_ip_label", "IP: %s", ip_str);
+  add_row("id_cpu_usage_value", "%s", g_overlay_title);
   if (nrows == 0)
     return;
 
@@ -651,7 +672,7 @@ void tick_shell_fps() {
 
 #ifdef ONIONHEN_FPS_OVERLAY_ONLY
 /* True when the live payload is publishing but reports no running game. */
-bool fps_no_game_running() {
+bool fps_raw_sample(OnionFpsSample *out) {
   static OnionFpsSample *map;
   if (map == nullptr || map == reinterpret_cast<OnionFpsSample *>(MAP_FAILED)) {
     map = onion_fps_map_ro();
@@ -660,11 +681,31 @@ bool fps_no_game_running() {
       return false;
     }
   }
-  OnionFpsSample local;
-  if (onion_fps_seqlock_load(map, &local) != 0)
+  if (onion_fps_seqlock_load(map, out) != 0)
     return false;
-  return local.magic == ONION_FPS_MAGIC && local.pid != ONION_FPS_PID_SHUTDOWN &&
-         local.title_id[0] == '\0';
+  return out->magic == ONION_FPS_MAGIC && out->pid != ONION_FPS_PID_SHUTDOWN;
+}
+
+bool fps_no_game_running() {
+  OnionFpsSample local;
+  return fps_raw_sample(&local) && local.title_id[0] == '\0';
+}
+
+/* "Name / TITLEID" while a game runs; empty (row hidden) on the home screen. */
+void update_overlay_title() {
+  OnionFpsSample local;
+  if (!fps_raw_sample(&local) || local.title_id[0] == '\0') {
+    g_overlay_title[0] = '\0';
+    return;
+  }
+  char tid[sizeof(local.title_id) + 1] = {};
+  char name[sizeof(local.title_name) + 1] = {};
+  std::memcpy(tid, local.title_id, sizeof(local.title_id));
+  std::memcpy(name, local.title_name, sizeof(local.title_name));
+  if (name[0])
+    std::snprintf(g_overlay_title, sizeof(g_overlay_title), "%s / %s", name, tid);
+  else
+    std::snprintf(g_overlay_title, sizeof(g_overlay_title), "%s", tid);
 }
 #endif
 
@@ -707,7 +748,13 @@ void update_overlay_metrics(unsigned int idle_tid[kCpuCores], int& current_bank,
 
   if (g_settings.overlay_ram) {
     Get_Page_Table_Stats(kVmSystem, kPageTableRam, &RAM.Used, &RAM.Free, &RAM.Total);
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+    snprintf(ram_str, ram_sz, "%d%% %dMB",
+             RAM.Total > 0 ? static_cast<int>((100LL * RAM.Used) / RAM.Total) : 0,
+             static_cast<int>(RAM.Used));
+#else
     snprintf(ram_str, ram_sz, "%u MB", RAM.Used);
+#endif
   }
 
   if (g_settings.overlay_gpu) {
@@ -722,7 +769,12 @@ void update_overlay_metrics(unsigned int idle_tid[kCpuCores], int& current_bank,
                          &VRAM.Total);
     VRAM.Percentage =
         (VRAM.Total > 0) ? ((float)VRAM.Used / (float)VRAM.Total) * 100.0f : 0.f;
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+    snprintf(gpu_usage, gpu_usage_sz, "%.0f%% %dMB", VRAM.Percentage,
+             static_cast<int>(VRAM.Used));
+#else
     snprintf(gpu_usage, gpu_usage_sz, "%.0f%%", VRAM.Percentage);
+#endif
   }
 
   if (g_settings.overlay_ip)
@@ -817,6 +869,9 @@ void OnRender_Hook(MonoObject* instance) {
   }
 
   if (frames_until_fps <= 0) {
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+    update_overlay_title();
+#endif
     if (g_settings.overlay_fps)
       format_fps_text(fps_str, sizeof(fps_str));
     else
