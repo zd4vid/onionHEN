@@ -320,7 +320,8 @@ void layout_bar_labels(const char *fps_str, const char *cpu_temp,
   /* Bottom edge: grow upward so the last row sits on the screen edge. */
   const float y_base = bottom ? g_overlay_layout.bar_y -
                                     static_cast<float>(nrows - 1) * line_h
-                              : g_overlay_layout.bar_y;
+                              : g_overlay_layout.bar_y +
+                                    onion::overlay::kStandaloneTopInset;
   const float margin_top = g_overlay_layout.label_margin_top;
 
   static const char *kAll[] = {
@@ -735,6 +736,39 @@ void format_fps_text(char *buf, size_t buf_sz) {
   }
 }
 
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+/* RAM/VRAM page-table stats. In games the system VM (kVmSystem) reports them,
+ * but on the home screen it can report 0/0, so fall back to the other VM ids
+ * and use the first one with a non-zero total. If none do, show a one-time
+ * toast with the raw values so the right VM can be identified. */
+void get_mem_stats(int type, Memory &m) {
+  static const int kVms[] = {kVmSystem, 0, 2, 3};
+  static bool reported[3] = {};
+  for (int vm : kVms) {
+    int total = 0, free_pages = 0;
+    if (get_page_table_stats(vm, type, &total, &free_pages) == -1 || total <= 0)
+      continue;
+    m.Total = total;
+    m.Free = free_pages;
+    m.Used = total - free_pages;
+    return;
+  }
+  m.Used = m.Free = m.Total = 0;
+  if (type >= 0 && type < 3 && !reported[type]) {
+    reported[type] = true;
+    char msg[256];
+    int n = std::snprintf(msg, sizeof(msg), "mem type %d all zero:", type);
+    for (int vm : kVms) {
+      int t = -1, f = -1;
+      const int rc = get_page_table_stats(vm, type, &t, &f);
+      n += std::snprintf(msg + n, sizeof(msg) - n, " vm%d=%d/%d/%d", vm, rc, t, f);
+    }
+    LOG_WARN("%s", msg);
+    notify("%s", msg);
+  }
+}
+#endif
+
 void update_overlay_metrics(unsigned int idle_tid[kCpuCores], int& current_bank,
                             char *cpu_temp, size_t cpu_temp_sz, char *cpu_usage,
                             size_t cpu_usage_sz, char *gpu_temp, size_t gpu_temp_sz,
@@ -747,12 +781,13 @@ void update_overlay_metrics(unsigned int idle_tid[kCpuCores], int& current_bank,
   sample_cpu_usage(idle_tid, current_bank, cpu_usage, cpu_usage_sz);
 
   if (g_settings.overlay_ram) {
-    Get_Page_Table_Stats(kVmSystem, kPageTableRam, &RAM.Used, &RAM.Free, &RAM.Total);
 #ifdef ONIONHEN_FPS_OVERLAY_ONLY
+    get_mem_stats(kPageTableRam, RAM);
     snprintf(ram_str, ram_sz, "%d%% %dMB",
              RAM.Total > 0 ? static_cast<int>((100LL * RAM.Used) / RAM.Total) : 0,
              static_cast<int>(RAM.Used));
 #else
+    Get_Page_Table_Stats(kVmSystem, kPageTableRam, &RAM.Used, &RAM.Free, &RAM.Total);
     snprintf(ram_str, ram_sz, "%u MB", RAM.Used);
 #endif
   }
@@ -765,8 +800,12 @@ void update_overlay_metrics(unsigned int idle_tid[kCpuCores], int& current_bank,
 #else
     snprintf(gpu_temp, gpu_temp_sz, "%dC", soc_temp);
 #endif
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+    get_mem_stats(kPageTableVram, VRAM);
+#else
     Get_Page_Table_Stats(kVmSystem, kPageTableVram, &VRAM.Used, &VRAM.Free,
                          &VRAM.Total);
+#endif
     VRAM.Percentage =
         (VRAM.Total > 0) ? ((float)VRAM.Used / (float)VRAM.Total) * 100.0f : 0.f;
 #ifdef ONIONHEN_FPS_OVERLAY_ONLY
