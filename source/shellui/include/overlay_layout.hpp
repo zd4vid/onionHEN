@@ -30,7 +30,10 @@ inline constexpr int kMetricFan = 5;
 /* Overlay font size in points. The standalone FPS build (ONIONHEN_FPS_OVERLAY_ONLY)
  * ignores the small/medium/large setting and uses one larger fixed size so it
  * matches the reference HUD; the full build keeps the configured size. */
-inline constexpr int kStandaloneFontPt = 28;
+inline constexpr int kStandaloneFontPt = 20;
+/* Standalone overlay: gap between the top screen edge and the first row (the
+ * left gap is kEdgeInset). Row pitch is kStandaloneFontPt + kBarExtra. */
+inline constexpr float kStandaloneTopInset = 24.0f;
 
 inline constexpr int effective_font_pt(int configured_pt) {
 #ifdef ONIONHEN_FPS_OVERLAY_ONLY

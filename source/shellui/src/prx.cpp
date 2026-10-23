@@ -433,36 +433,41 @@ bool load_shell_images(ShellImages& out) {
 // Phase 6: resolve Game container scene
 // ---------------------------------------------------------------------------
 
-bool resolve_game_container(MonoImage* app_system) {
+bool resolve_game_container(MonoImage* app_system, const char* scene_path = "Game",
+                            bool notify_on_fail = true) {
   MonoClass* layer_manager =
       mono_class_from_name(app_system, "Sce.Vsh.ShellUI.AppSystem", "LayerManager");
   if (!layer_manager) {
-    notify("notify.hook.layer_manager");
+    if (notify_on_fail)
+      notify("notify.hook.layer_manager");
     return false;
   }
 
   MonoMethod* find =
       mono_class_get_method_from_name(layer_manager, "FindContainerSceneByPath", 1);
   if (!find) {
-    notify("notify.hook.find_scene");
+    if (notify_on_fail)
+      notify("notify.hook.find_scene");
     return false;
   }
 
-  MonoString* path_arg = mono_string_new(mono_domain_get(), "Game");
+  MonoString* path_arg = mono_string_new(mono_domain_get(), scene_path);
   void* args[1] = {path_arg};
   MonoObject* exception = nullptr;
   Game = mono_runtime_invoke(find, nullptr, args, &exception);
 
   if (exception) {
-    notify("notify.hook.find_scene_exc");
+    if (notify_on_fail)
+      notify("notify.hook.find_scene_exc");
     return false;
   }
   if (!Game) {
-    notify("notify.hook.game_scene");
+    if (notify_on_fail)
+      notify("notify.hook.game_scene");
     return false;
   }
 
-  LOG_DEBUG("Game ContainerScene: %p", static_cast<void *>(Game));
+  LOG_DEBUG("ContainerScene '%s': %p", scene_path, static_cast<void *>(Game));
   return true;
 }
 
@@ -754,16 +759,16 @@ int fps_overlay_only_main() {
 
   init_overlay_resource_names();
 
-  /* Fixed overlay config: two text rows (FPS / CPU+GPU temps), top-left,
-   * no background panel. Font size is fixed in overlay::effective_font_pt(). */
+  /* Fixed overlay config: text rows (FPS, CPU/GPU temps, RAM, VRAM, FAN, IP,
+   * game title), top-left, no background panel. Font size is fixed in overlay::effective_font_pt(). */
   g_settings.overlay_enabled = true;
   g_settings.overlay_background = false;
   g_settings.overlay_fps = true;
   g_settings.overlay_cpu = true;
   g_settings.overlay_gpu = true;
-  g_settings.overlay_ram = false;
-  g_settings.overlay_ip = false;
-  g_settings.overlay_fan = false;
+  g_settings.overlay_ram = true;
+  g_settings.overlay_ip = true;
+  g_settings.overlay_fan = true;
   g_settings.all_cpu_usage = false;
   g_settings.overlay_pos = 0;   /* top edge */
   g_settings.overlay_align = 0; /* left */
@@ -777,7 +782,11 @@ int fps_overlay_only_main() {
   mono_thread_attach(Root_Domain);
 
   ShellImages images;
-  if (!load_overlay_images(images) || !resolve_game_container(images.app_system))
+  if (!load_overlay_images(images))
+    return -1;
+
+  /* "SystemOverlay" is drawn above both games and the home screen. */
+  if (!resolve_game_container(images.app_system, "SystemOverlay"))
     return -1;
 
   char probe[kMprotectProbeSize];

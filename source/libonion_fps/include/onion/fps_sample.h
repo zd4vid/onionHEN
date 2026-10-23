@@ -49,7 +49,8 @@ struct OnionFpsSample {
   uint32_t pad_align;
   uint64_t unix_ns;
   char title_id[16];
-  uint8_t reserved[80];
+  char title_name[64]; /* display name of the running game; "" if unknown */
+  uint8_t reserved[16];
 };
 
 static inline uint64_t onion_fps_realtime_ns(void) {
