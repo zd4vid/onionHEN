@@ -832,8 +832,24 @@ void update_overlay_metrics(unsigned int idle_tid[kCpuCores], int& current_bank,
   if (g_settings.overlay_fan) {
     uint16_t duty = 0;
     uint64_t chassis = 0;
-    if (sceKernelGetCurrentFanDuty &&
-        sceKernelGetCurrentFanDuty(&duty, &chassis) == 0) {
+    const int fan_rc =
+        sceKernelGetCurrentFanDuty ? sceKernelGetCurrentFanDuty(&duty, &chassis)
+                                   : -1;
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+    /* Diagnostic: show the raw reading twice (at start and ~30 s later) so the
+     * duty scale used below can be checked against what the console is doing. */
+    static int fan_reads = 0;
+    ++fan_reads;
+    if (fan_reads == 1 || fan_reads == 30) {
+      LOG_INFO("fan raw: rc=%d duty=%u chassis=%llu", fan_rc,
+               static_cast<unsigned>(duty),
+               static_cast<unsigned long long>(chassis));
+      notify("fan raw: rc=%d duty=%u chassis=%llu", fan_rc,
+             static_cast<unsigned>(duty),
+             static_cast<unsigned long long>(chassis));
+    }
+#endif
+    if (fan_rc == 0) {
       snprintf(fan_str, fan_sz, "%.0f%%",
                (double)duty * 100.0 / 1024.0);
     } else {
