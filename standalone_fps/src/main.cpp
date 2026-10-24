@@ -52,25 +52,11 @@ extern uint8_t fps_overlay_elf_start[];
 bool fps_kstuff_active(void);
 }
 
-/* This payload runs without the bootstrapper/daemon, so nothing else waits for
- * kstuff. Poll the capability directly; injecting into SceShellUI without it
- * is not safe. */
-static bool wait_for_kstuff(unsigned timeout_sec) {
-  for (unsigned waited = 0;; ++waited) {
-    if (fps_kstuff_active())
-      return true;
-    if (waited >= timeout_sec)
-      return false;
-    sleep(1);
-  }
-}
-
 static double mono_sec();
 
 /* The full daemon never ELF-loads into SceShellUI until these modules are
  * mapped (same gate kstuff uses; see source/daemon/source/daemon_inject.cpp).
- * Injecting earlier stalls ShellUI, which is what froze the screen when the
- * payload was started from an on-console payload manager. */
+ * Cheap safety check; it passes immediately on a console that has been up. */
 static bool shellui_sprx_loaded(pid_t pid, const char *name) {
   uint32_t handle = static_cast<uint32_t>(-1);
   return kernel_dynlib_handle(pid, name, &handle) == 0 &&
@@ -196,7 +182,6 @@ static constexpr useconds_t kSafeSampleUs = 100000; /* 10 Hz */
 /* Idle loop pass (home screen / no sample): keep publishing the heartbeat well
  * inside ONION_FPS_HEARTBEAT_TIMEOUT_NS so a killed payload is noticed fast. */
 static constexpr useconds_t kIdleHeartbeatUs = 200000;
-static constexpr unsigned kKstuffWaitSec = 20;
 
 static double mono_sec() {
   struct timespec ts{};
@@ -466,14 +451,13 @@ int main() {
 
   LOG_INFO("standalone fps counter started (safe scanout-only mode + overlay)");
 
-  /* Preflight 1: kstuff must be running. */
-  if (!wait_for_kstuff(kKstuffWaitSec)) {
-    LOG_ERROR("kstuff is not running (mprotect probe failed after %us); "
-              "load kstuff first, then fps_counter.elf. Not injecting.",
-              kKstuffWaitSec);
-    return 1;
-  }
-  LOG_INFO("kstuff detected");
+  /* kstuff is optional. With it, userland mprotect(RWX) works; without it the
+   * overlay's detour code falls back to a kernel mprotect. If the console
+   * refuses both, injection fails and is retried (see the log). */
+  if (fps_kstuff_active())
+    LOG_INFO("kstuff detected");
+  else
+    LOG_WARN("kstuff not detected; injecting anyway (kernel mprotect fallback)");
 
   /* Preflight 2: never inject twice. A live overlay is marked ready for the
    * current SceShellUI pid; the injector thread skips it, and a new ShellUI
