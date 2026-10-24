@@ -738,18 +738,54 @@ void format_fps_text(char *buf, size_t buf_sz) {
 
 #ifdef ONIONHEN_FPS_OVERLAY_ONLY
 /* RAM/VRAM page-table stats. In games the system VM (kVmSystem) reports them,
- * but on the home screen it can report 0/0, so fall back to the other VM ids
- * and use the first one with a non-zero total. */
+ * but on the home screen it can report 0/0. Other VM ids are only probed once
+ * the home screen has been stable for a few updates (never while a game is
+ * starting or running, when VM state is changing under us), and the id that
+ * worked is remembered so the others are not queried again. */
+constexpr int kHomeStableUpdates = 4;
+int g_home_stable_updates = 0;
+int g_cached_vm[3] = {-1, -1, -1}; /* per page-table type; -1 = none yet */
+
+void note_home_state() {
+  if (fps_no_game_running()) {
+    if (g_home_stable_updates < kHomeStableUpdates)
+      ++g_home_stable_updates;
+  } else {
+    g_home_stable_updates = 0;
+  }
+}
+
+bool query_vm(int vm, int type, Memory &m) {
+  int total = 0, free_pages = 0;
+  if (get_page_table_stats(vm, type, &total, &free_pages) == -1 || total <= 0)
+    return false;
+  m.Total = total;
+  m.Free = free_pages;
+  m.Used = total - free_pages;
+  return true;
+}
+
 void get_mem_stats(int type, Memory &m) {
-  static const int kVms[] = {kVmSystem, 0, 2, 3};
-  for (int vm : kVms) {
-    int total = 0, free_pages = 0;
-    if (get_page_table_stats(vm, type, &total, &free_pages) == -1 || total <= 0)
-      continue;
-    m.Total = total;
-    m.Free = free_pages;
-    m.Used = total - free_pages;
+  const int slot = (type >= 0 && type < 3) ? type : 0;
+  /* Outside a stable home screen (game starting or running) only the system
+   * VM is ever queried. */
+  if (g_home_stable_updates < kHomeStableUpdates) {
+    if (!query_vm(kVmSystem, type, m))
+      m.Used = m.Free = m.Total = 0;
     return;
+  }
+  if (g_cached_vm[slot] >= 0 && query_vm(g_cached_vm[slot], type, m))
+    return;
+  if (query_vm(kVmSystem, type, m)) {
+    g_cached_vm[slot] = kVmSystem;
+    return;
+  }
+  static const int kFallbackVms[] = {0, 2, 3};
+  for (int vm : kFallbackVms) {
+    if (query_vm(vm, type, m)) {
+      g_cached_vm[slot] = vm;
+      return;
+    }
   }
   m.Used = m.Free = m.Total = 0;
 }
@@ -764,6 +800,9 @@ void update_overlay_metrics(unsigned int idle_tid[kCpuCores], int& current_bank,
   if (!g_settings.overlay_enabled)
     return;
 
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+  note_home_state();
+#endif
   sample_cpu_usage(idle_tid, current_bank, cpu_usage, cpu_usage_sz);
 
   if (g_settings.overlay_ram) {
