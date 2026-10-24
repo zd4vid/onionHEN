@@ -102,16 +102,14 @@ static bool wait_overlay_ready(pid_t pid, int timeout_ms) {
   return onion_ready_matches_pid(ONION_READY_TOOLBOX, pid);
 }
 
-/* Keeps the overlay injected into SceShellUI. Re-injects after a ShellUI
- * restart (new pid, e.g. Rest Mode resume). */
-/* Seconds to wait before the first injection. OnionHEN spends 20+ s starting
- * its services before its daemon touches SceShellUI; injecting within a few
+/* Seconds to wait before the first injection (default 3). OnionHEN spends
+ * 20+ s starting its services before its daemon touches SceShellUI; injecting within a few
  * milliseconds of being loaded from the on-console payload manager (a web page
  * that is still busy handing the payload over) hung the browser until the
  * system raised an error. Override with a plain number in
  * /data/onion_fps_delay (0 disables the wait). */
 static unsigned initial_inject_delay_sec() {
-  unsigned delay = 10;
+  unsigned delay = 3;
   FILE *f = std::fopen("/data/onion_fps_delay", "r");
   if (f) {
     unsigned v = 0;
@@ -122,6 +120,8 @@ static unsigned initial_inject_delay_sec() {
   return delay;
 }
 
+/* Keeps the overlay injected into SceShellUI. Re-injects after a ShellUI
+ * restart (new pid, e.g. Rest Mode resume). */
 static void *injector_thread(void *) {
   pid_t injected_pid = -1;
   const unsigned initial_delay = initial_inject_delay_sec();
@@ -193,6 +193,9 @@ bool Get_Running_App_TID(std::string &title_id, int &BigAppid) {
  * game memory, kernel memory, or PS4 compatibility hooks. */
 static constexpr unsigned kWarmupSec = 0;
 static constexpr useconds_t kSafeSampleUs = 100000; /* 10 Hz */
+/* Idle loop pass (home screen / no sample): keep publishing the heartbeat well
+ * inside ONION_FPS_HEARTBEAT_TIMEOUT_NS so a killed payload is noticed fast. */
+static constexpr useconds_t kIdleHeartbeatUs = 200000;
 static constexpr unsigned kKstuffWaitSec = 20;
 
 static double mono_sec() {
@@ -363,7 +366,7 @@ static void *safe_sampler_thread(void *) {
       have = false;
       wn = wi = 0;
       publish_sample(false, nullptr, 0.f);
-      sleep(1);
+      usleep(kIdleHeartbeatUs);
       continue;
     }
     if (tid != cached_tid) {
@@ -377,10 +380,11 @@ static void *safe_sampler_thread(void *) {
     }
     if (mono_sec() - started < kWarmupSec) {
       publish_sample(false, tid.c_str(), 0.f);
-      sleep(1);
+      usleep(kIdleHeartbeatUs);
       continue;
     }
 
+    bool published = false;
     uint64_t count = 0;
     if (dce.sample(&count)) {
       const double now = mono_sec();
@@ -394,6 +398,7 @@ static void *safe_sampler_thread(void *) {
             ++wn;
           publish_sample(true, tid.c_str(),
                          onion::fps::rolling_mean(window, wn));
+          published = true;
         }
       }
       last_count = count;
@@ -407,8 +412,13 @@ static void *safe_sampler_thread(void *) {
       }
       /* Keep the heartbeat alive; the overlay hides itself if it stops. */
       publish_sample(false, tid.c_str(), 0.f);
-      sleep(1);
+      published = true;
     }
+    /* Every pass is a heartbeat, even when there is no new frame data (paused
+     * game, transient ioctl failure): repeat the last known value. */
+    if (!published)
+      publish_sample(wn > 0, tid.c_str(),
+                     wn > 0 ? onion::fps::rolling_mean(window, wn) : 0.f);
     usleep(kSafeSampleUs);
   }
   publish_shutdown();
