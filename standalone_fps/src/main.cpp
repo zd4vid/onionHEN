@@ -104,8 +104,32 @@ static bool wait_overlay_ready(pid_t pid, int timeout_ms) {
 
 /* Keeps the overlay injected into SceShellUI. Re-injects after a ShellUI
  * restart (new pid, e.g. Rest Mode resume). */
+/* Seconds to wait before the first injection. OnionHEN spends 20+ s starting
+ * its services before its daemon touches SceShellUI; injecting within a few
+ * milliseconds of being loaded from the on-console payload manager (a web page
+ * that is still busy handing the payload over) hung the browser until the
+ * system raised an error. Override with a plain number in
+ * /data/onion_fps_delay (0 disables the wait). */
+static unsigned initial_inject_delay_sec() {
+  unsigned delay = 10;
+  FILE *f = std::fopen("/data/onion_fps_delay", "r");
+  if (f) {
+    unsigned v = 0;
+    if (std::fscanf(f, "%u", &v) == 1)
+      delay = v > 120 ? 120 : v;
+    std::fclose(f);
+  }
+  return delay;
+}
+
 static void *injector_thread(void *) {
   pid_t injected_pid = -1;
+  const unsigned initial_delay = initial_inject_delay_sec();
+  LOG_INFO("waiting %us before the first injection", initial_delay);
+  for (unsigned i = 0;
+       i < initial_delay && !g_stack_shutting_down.load(std::memory_order_acquire);
+       ++i)
+    sleep(1);
   pid_t waiting_pid = -1;
   double wait_started = 0.0;
   while (!g_stack_shutting_down.load(std::memory_order_acquire)) {
