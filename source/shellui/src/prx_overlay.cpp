@@ -165,7 +165,9 @@ constexpr int kOverlayInitDelayFrames = 30;
 /* Metrics (temps, RAM/VRAM, fan, CPU usage, IP) refresh once a second of wall
  * time, independent of the frame rate. */
 constexpr uint64_t kOverlayUpdateIntervalNs = 1000000000ull;
-constexpr int kFpsUpdateIntervalFrames = 2;
+#ifndef ONIONHEN_FPS_OVERLAY_ONLY
+constexpr int kFpsUpdateIntervalFrames = 2; /* full build: FPS refreshes faster */
+#endif
 
 constexpr int kClockIdRealtime = 4;
 constexpr int kVmSystem = 1;
@@ -891,7 +893,6 @@ void OnRender_Hook(MonoObject* instance) {
   static unsigned int idle_thread_id[kCpuCores] = {};
   static int current_bank = 0;
   static uint64_t next_update_ns = 0;
-  static int frames_until_fps = 0;
   static int frames_until_init = kOverlayInitDelayFrames;
   static char gpu_temp[32] = {};
   static char gpu_usage[32] = {};
@@ -934,7 +935,10 @@ void OnRender_Hook(MonoObject* instance) {
   const uint64_t metrics_now_ns =
       static_cast<uint64_t>(metrics_ts.tv_sec) * 1000000000ull +
       static_cast<uint64_t>(metrics_ts.tv_nsec);
-  if (metrics_now_ns >= next_update_ns) {
+  /* One tick per second drives every value, FPS included, so the rows change
+   * together. */
+  const bool tick = metrics_now_ns >= next_update_ns;
+  if (tick) {
     update_overlay_metrics(idle_thread_id, current_bank, cpu_temp,
                            sizeof(cpu_temp), cpu_usage, sizeof(cpu_usage),
                            gpu_temp, sizeof(gpu_temp), gpu_usage,
@@ -944,7 +948,14 @@ void OnRender_Hook(MonoObject* instance) {
     next_update_ns = metrics_now_ns + kOverlayUpdateIntervalNs;
   }
 
-  if (frames_until_fps <= 0) {
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+  const bool layout_tick = tick; /* standalone overlay: everything in sync */
+#else
+  static int frames_until_fps = 0;
+  const bool layout_tick = frames_until_fps <= 0;
+  frames_until_fps = layout_tick ? kFpsUpdateIntervalFrames : frames_until_fps - 1;
+#endif
+  if (layout_tick) {
 #ifdef ONIONHEN_FPS_OVERLAY_ONLY
     update_overlay_title();
 #endif
@@ -963,9 +974,6 @@ void OnRender_Hook(MonoObject* instance) {
         g_settings.overlay_ram ? ram_str : nullptr,
         g_settings.overlay_ip ? ip_address : nullptr,
         g_settings.overlay_fan ? fan_str : nullptr);
-    frames_until_fps = kFpsUpdateIntervalFrames;
-  } else {
-    frames_until_fps--;
   }
 
   OnRender_orig(instance);
