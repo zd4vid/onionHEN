@@ -63,40 +63,14 @@ static bool wait_for_kstuff(unsigned timeout_sec) {
   }
 }
 
-bool Get_Running_App_TID(std::string &title_id, int &BigAppid);
-
-/* Retail PS5/PS4 title ids start with 'P' or 'C' (PPSA, PCSA, CUSA, ...).
- * Anything else (e.g. LAPY20012) is a homebrew app such as a payload manager. */
-static bool is_homebrew_tid(const std::string &tid) {
-  return !tid.empty() && tid[0] != 'P' && tid[0] != 'C';
-}
-
 /* Keeps the overlay injected into SceShellUI. Re-injects after a ShellUI
  * restart (new pid, e.g. Rest Mode resume). */
 static void *injector_thread(void *) {
   pid_t injected_pid = -1;
-  bool deferred_logged = false;
   while (!g_stack_shutting_down.load(std::memory_order_acquire)) {
     const pid_t pid = onion_find_pid("SceShellUI");
     if (pid > 0 && pid != injected_pid &&
         !onion_ready_matches_pid(ONION_READY_TOOLBOX, pid)) {
-      /* Injecting stalls SceShellUI. While a homebrew app (the payload manager
-       * that launched us) is in front, that froze the screen until the system
-       * raised an error, so wait until it is closed. Retail games and the home
-       * screen inject immediately. */
-      std::string front_tid;
-      int front_app = 0;
-      if (Get_Running_App_TID(front_tid, front_app) &&
-          is_homebrew_tid(front_tid)) {
-        if (!deferred_logged) {
-          LOG_INFO("homebrew app %s is in front; injecting once it is closed",
-                   front_tid.c_str());
-          deferred_logged = true;
-        }
-        sleep(2);
-        continue;
-      }
-      deferred_logged = false;
       LOG_INFO("injecting fps overlay into SceShellUI pid=%d",
                static_cast<int>(pid));
       if (Inject_Toolbox(static_cast<int>(pid), fps_overlay_elf_start) &&
