@@ -31,6 +31,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <ps5/kernel.h>
+
 #include "daemon_ops.hpp"
 #include "globalconf.hpp"
 
@@ -63,14 +65,50 @@ static bool wait_for_kstuff(unsigned timeout_sec) {
   }
 }
 
+static double mono_sec();
+
+/* The full daemon never ELF-loads into SceShellUI until these modules are
+ * mapped (same gate kstuff uses; see source/daemon/source/daemon_inject.cpp).
+ * Injecting earlier stalls ShellUI, which is what froze the screen when the
+ * payload was started from an on-console payload manager. */
+static bool shellui_sprx_loaded(pid_t pid, const char *name) {
+  uint32_t handle = static_cast<uint32_t>(-1);
+  return kernel_dynlib_handle(pid, name, &handle) == 0 &&
+         handle != static_cast<uint32_t>(-1);
+}
+
+static bool shellui_ready_for_inject(pid_t pid) {
+  return shellui_sprx_loaded(pid, "libSceNpTrophy.sprx") &&
+         shellui_sprx_loaded(pid, "libSceNpTrophy2.sprx");
+}
+
 /* Keeps the overlay injected into SceShellUI. Re-injects after a ShellUI
  * restart (new pid, e.g. Rest Mode resume). */
 static void *injector_thread(void *) {
   pid_t injected_pid = -1;
+  pid_t waiting_pid = -1;
+  double wait_started = 0.0;
   while (!g_stack_shutting_down.load(std::memory_order_acquire)) {
     const pid_t pid = onion_find_pid("SceShellUI");
     if (pid > 0 && pid != injected_pid &&
         !onion_ready_matches_pid(ONION_READY_TOOLBOX, pid)) {
+      if (waiting_pid != pid) {
+        waiting_pid = pid;
+        wait_started = mono_sec();
+      }
+      if (!shellui_ready_for_inject(pid)) {
+        static double last_log = 0.0;
+        const double now = mono_sec();
+        if (now - last_log >= 10.0) {
+          LOG_INFO("waiting for SceShellUI pid=%d NpTrophy modules (%.0fs)",
+                   static_cast<int>(pid), now - wait_started);
+          last_log = now;
+        }
+        sleep(1);
+        continue;
+      }
+      LOG_INFO("SceShellUI pid=%d ready for inject after %.1fs",
+               static_cast<int>(pid), mono_sec() - wait_started);
       LOG_INFO("injecting fps overlay into SceShellUI pid=%d",
                static_cast<int>(pid));
       if (Inject_Toolbox(static_cast<int>(pid), fps_overlay_elf_start) &&
