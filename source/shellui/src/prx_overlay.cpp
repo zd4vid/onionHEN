@@ -162,7 +162,9 @@ namespace {
 constexpr int kMaxProcThreads = 3072;
 constexpr int kCpuCores = 8;
 constexpr int kOverlayInitDelayFrames = 30;
-constexpr int kOverlayUpdateIntervalFrames = 60;
+/* Metrics (temps, RAM/VRAM, fan, CPU usage, IP) refresh once a second of wall
+ * time, independent of the frame rate. */
+constexpr uint64_t kOverlayUpdateIntervalNs = 1000000000ull;
 constexpr int kFpsUpdateIntervalFrames = 2;
 
 constexpr int kClockIdRealtime = 4;
@@ -767,27 +769,31 @@ bool query_vm(int vm, int type, Memory &m) {
 
 void get_mem_stats(int type, Memory &m) {
   const int slot = (type >= 0 && type < 3) ? type : 0;
-  /* Outside a stable home screen (game starting or running) only the system
-   * VM is ever queried. */
-  if (g_home_stable_updates < kHomeStableUpdates) {
-    if (!query_vm(kVmSystem, type, m))
-      m.Used = m.Free = m.Total = 0;
+  if (query_vm(kVmSystem, type, m)) {
+    if (g_home_stable_updates >= kHomeStableUpdates)
+      g_cached_vm[slot] = kVmSystem;
     return;
   }
+  /* The system VM reports 0/0 on the home screen, including the first seconds
+   * after a game quits. Use the id that worked on the home screen before; it
+   * is known good, so it is safe to query straight away. */
   if (g_cached_vm[slot] >= 0 && query_vm(g_cached_vm[slot], type, m))
     return;
-  if (query_vm(kVmSystem, type, m)) {
-    g_cached_vm[slot] = kVmSystem;
+  /* Other ids are only probed once the home screen has been stable for a few
+   * updates, never while a game is starting or running. */
+  if (g_home_stable_updates >= kHomeStableUpdates) {
+    static const int kFallbackVms[] = {0, 2, 3};
+    for (int vm : kFallbackVms) {
+      if (query_vm(vm, type, m)) {
+        g_cached_vm[slot] = vm;
+        return;
+      }
+    }
+    m.Used = m.Free = m.Total = 0;
     return;
   }
-  static const int kFallbackVms[] = {0, 2, 3};
-  for (int vm : kFallbackVms) {
-    if (query_vm(vm, type, m)) {
-      g_cached_vm[slot] = vm;
-      return;
-    }
-  }
-  m.Used = m.Free = m.Total = 0;
+  /* Nothing usable yet (transition): keep showing the previous reading
+   * instead of flashing 0 MB. */
 }
 #endif
 
@@ -884,7 +890,7 @@ void OnRender_Hook(MonoObject* instance) {
   static bool inited = false;
   static unsigned int idle_thread_id[kCpuCores] = {};
   static int current_bank = 0;
-  static int frames_until_update = 0;
+  static uint64_t next_update_ns = 0;
   static int frames_until_fps = 0;
   static int frames_until_init = kOverlayInitDelayFrames;
   static char gpu_temp[32] = {};
@@ -903,6 +909,7 @@ void OnRender_Hook(MonoObject* instance) {
       RemoveGameWidget(REMOVE_ALL_OVERLAYS);
       inited = false;
       frames_until_init = kOverlayInitDelayFrames;
+      next_update_ns = 0;
     }
     OnRender_orig(instance);
     return;
@@ -922,16 +929,19 @@ void OnRender_Hook(MonoObject* instance) {
     }
   }
 
-  if (frames_until_update <= 0) {
+  struct timespec metrics_ts {};
+  clock_gettime(CLOCK_MONOTONIC, &metrics_ts);
+  const uint64_t metrics_now_ns =
+      static_cast<uint64_t>(metrics_ts.tv_sec) * 1000000000ull +
+      static_cast<uint64_t>(metrics_ts.tv_nsec);
+  if (metrics_now_ns >= next_update_ns) {
     update_overlay_metrics(idle_thread_id, current_bank, cpu_temp,
                            sizeof(cpu_temp), cpu_usage, sizeof(cpu_usage),
                            gpu_temp, sizeof(gpu_temp), gpu_usage,
                            sizeof(gpu_usage), ram_str, sizeof(ram_str),
                            ip_address, sizeof(ip_address), fan_str,
                            sizeof(fan_str));
-    frames_until_update = kOverlayUpdateIntervalFrames;
-  } else {
-    frames_until_update--;
+    next_update_ns = metrics_now_ns + kOverlayUpdateIntervalNs;
   }
 
   if (frames_until_fps <= 0) {
