@@ -82,6 +82,26 @@ static bool shellui_ready_for_inject(pid_t pid) {
          shellui_sprx_loaded(pid, "libSceNpTrophy2.sprx");
 }
 
+/* Waits for the overlay's ready marker, but gives up as soon as the target
+ * SceShellUI is gone or replaced. When the system restarts a hung ShellUI the
+ * old pid never becomes ready, and waiting out the full timeout delayed the
+ * injection into the new ShellUI by ~45 s. */
+static bool wait_overlay_ready(pid_t pid, int timeout_ms) {
+  for (int waited = 0; waited <= timeout_ms; waited += 250) {
+    if (onion_ready_matches_pid(ONION_READY_TOOLBOX, pid))
+      return true;
+    if (g_stack_shutting_down.load(std::memory_order_acquire))
+      return false;
+    if (!isProcessAlive(pid) || onion_find_pid("SceShellUI") != pid) {
+      LOG_WARN("SceShellUI pid=%d went away while waiting for the overlay",
+               static_cast<int>(pid));
+      return false;
+    }
+    usleep(250 * 1000);
+  }
+  return onion_ready_matches_pid(ONION_READY_TOOLBOX, pid);
+}
+
 /* Keeps the overlay injected into SceShellUI. Re-injects after a ShellUI
  * restart (new pid, e.g. Rest Mode resume). */
 static void *injector_thread(void *) {
@@ -112,7 +132,7 @@ static void *injector_thread(void *) {
       LOG_INFO("injecting fps overlay into SceShellUI pid=%d",
                static_cast<int>(pid));
       if (Inject_Toolbox(static_cast<int>(pid), fps_overlay_elf_start) &&
-          onion_ready_wait_pid(ONION_READY_TOOLBOX, pid, 45000, 250)) {
+          wait_overlay_ready(pid, 45000)) {
         injected_pid = pid;
         LOG_INFO("fps overlay ready (pid=%d)", static_cast<int>(pid));
       } else {
