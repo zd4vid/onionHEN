@@ -414,6 +414,20 @@ static void detach_from_loader(void) {
 
 int main() {
   detach_from_loader();
+
+  /* The loader keeps its own copy of the connection and only releases it when
+   * the process it started exits. A web-page payload manager blocks on that
+   * connection, hangs the browser, and the system raises an error (ShellUI is
+   * stuck behind the hung browser, so injection cannot finish either). Do the
+   * real work in a detached child and let the loader's process exit at once.
+   * If fork is unavailable, carry on in-process as before. */
+  const pid_t child = fork();
+  if (child > 0)
+    _exit(0);
+  const bool detached = (child == 0);
+  if (detached)
+    (void)setsid();
+
   mkdir(ONION_SYSTEM_TMP_ROOT, 0777);
   onion_log_configure("FPS", "/data/onion_fps.log");
   onion_log_set_level(ONION_LOG_INFO);
@@ -431,6 +445,9 @@ int main() {
       []() -> int { return sceSystemServiceGetAppIdOfRunningBigApp(); });
 
   LOG_INFO("standalone fps counter started (safe scanout-only mode + overlay)");
+  LOG_INFO(detached ? "detached from the loader (pid=%d)"
+                    : "fork failed; running inside the loader process (pid=%d)",
+           static_cast<int>(getpid()));
 
   /* Preflight 1: kstuff must be running. */
   if (!wait_for_kstuff(kKstuffWaitSec)) {
