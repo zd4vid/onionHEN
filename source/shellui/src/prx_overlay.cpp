@@ -163,7 +163,7 @@ constexpr int kMaxProcThreads = 3072;
 constexpr int kCpuCores = 8;
 constexpr int kOverlayInitDelayFrames = 30;
 /* Every value (FPS, temps, RAM/VRAM, fan, CPU usage, IP) refreshes together every
- * 500 ms of wall time, independent of the frame rate. */
+ * 750 ms of wall time, independent of the frame rate. */
 constexpr uint64_t kOverlayUpdateIntervalNs = 750000000ull;
 #ifndef ONIONHEN_FPS_OVERLAY_ONLY
 constexpr int kFpsUpdateIntervalFrames = 2; /* full build: FPS refreshes faster */
