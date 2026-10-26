@@ -22,7 +22,7 @@ SceShellUI already has the overlay, and waits 3 s before the first injection
 (change it by writing a number of seconds to `/data/onion_fps_delay`; 0
 disables the wait).
 
-All values, FPS included, refresh together every 500 ms.
+All values, FPS included, refresh together every 750 ms.
 
 Log: `/data/onion_fps.log` - look for `kstuff detected` (or the warning that it
 was not), then `injecting fps overlay` followed by `fps overlay ready`.

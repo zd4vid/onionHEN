@@ -164,7 +164,7 @@ constexpr int kCpuCores = 8;
 constexpr int kOverlayInitDelayFrames = 30;
 /* Every value (FPS, temps, RAM/VRAM, fan, CPU usage, IP) refreshes together every
  * 500 ms of wall time, independent of the frame rate. */
-constexpr uint64_t kOverlayUpdateIntervalNs = 500000000ull;
+constexpr uint64_t kOverlayUpdateIntervalNs = 750000000ull;
 #ifndef ONIONHEN_FPS_OVERLAY_ONLY
 constexpr int kFpsUpdateIntervalFrames = 2; /* full build: FPS refreshes faster */
 #endif
@@ -746,7 +746,7 @@ void format_fps_text(char *buf, size_t buf_sz) {
  * the home screen has been stable for a few updates (never while a game is
  * starting or running, when VM state is changing under us), and the id that
  * worked is remembered so the others are not queried again. */
-constexpr int kHomeStableUpdates = 2; /* 2 ticks = 1 s */
+constexpr int kHomeStableUpdates = 2; /* 2 ticks = 1.5 s */
 int g_home_stable_updates = 0;
 int g_cached_vm[3] = {-1, -1, -1}; /* per page-table type; -1 = none yet */
 
@@ -940,7 +940,7 @@ void OnRender_Hook(MonoObject* instance) {
   const uint64_t metrics_now_ns =
       static_cast<uint64_t>(metrics_ts.tv_sec) * 1000000000ull +
       static_cast<uint64_t>(metrics_ts.tv_nsec);
-  /* One tick every 500 ms drives every value, FPS included, so the rows change
+  /* One tick every 750 ms drives every value, FPS included, so the rows change
    * together. */
   const bool tick = metrics_now_ns >= next_update_ns;
   if (tick) {
