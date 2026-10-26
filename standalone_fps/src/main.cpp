@@ -27,8 +27,11 @@
 #include <ctime>
 #include <pthread.h>
 #include <signal.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+#include <ps5/kernel.h>
 
 #include "daemon_ops.hpp"
 #include "globalconf.hpp"
@@ -49,18 +52,97 @@ extern uint8_t fps_overlay_elf_start[];
 bool fps_kstuff_active(void);
 }
 
+static double mono_sec();
+
+/* The full daemon never ELF-loads into SceShellUI until these modules are
+ * mapped (same gate kstuff uses; see source/daemon/source/daemon_inject.cpp).
+ * Cheap safety check; it passes immediately on a console that has been up. */
+static bool shellui_sprx_loaded(pid_t pid, const char *name) {
+  uint32_t handle = static_cast<uint32_t>(-1);
+  return kernel_dynlib_handle(pid, name, &handle) == 0 &&
+         handle != static_cast<uint32_t>(-1);
+}
+
+static bool shellui_ready_for_inject(pid_t pid) {
+  return shellui_sprx_loaded(pid, "libSceNpTrophy.sprx") &&
+         shellui_sprx_loaded(pid, "libSceNpTrophy2.sprx");
+}
+
+/* Waits for the overlay's ready marker, but gives up as soon as the target
+ * SceShellUI is gone or replaced. When the system restarts a hung ShellUI the
+ * old pid never becomes ready, and waiting out the full timeout delayed the
+ * injection into the new ShellUI by ~45 s. */
+static bool wait_overlay_ready(pid_t pid, int timeout_ms) {
+  for (int waited = 0; waited <= timeout_ms; waited += 250) {
+    if (onion_ready_matches_pid(ONION_READY_TOOLBOX, pid))
+      return true;
+    if (g_stack_shutting_down.load(std::memory_order_acquire))
+      return false;
+    if (!isProcessAlive(pid) || onion_find_pid("SceShellUI") != pid) {
+      LOG_WARN("SceShellUI pid=%d went away while waiting for the overlay",
+               static_cast<int>(pid));
+      return false;
+    }
+    usleep(250 * 1000);
+  }
+  return onion_ready_matches_pid(ONION_READY_TOOLBOX, pid);
+}
+
+/* Seconds to wait before the first injection (default 3). OnionHEN spends
+ * 20+ s starting its services before its daemon touches SceShellUI; injecting within a few
+ * milliseconds of being loaded from the on-console payload manager (a web page
+ * that is still busy handing the payload over) hung the browser until the
+ * system raised an error. Override with a plain number in
+ * /data/onion_fps_delay (0 disables the wait). */
+static unsigned initial_inject_delay_sec() {
+  unsigned delay = 3;
+  FILE *f = std::fopen("/data/onion_fps_delay", "r");
+  if (f) {
+    unsigned v = 0;
+    if (std::fscanf(f, "%u", &v) == 1)
+      delay = v > 120 ? 120 : v;
+    std::fclose(f);
+  }
+  return delay;
+}
+
 /* Keeps the overlay injected into SceShellUI. Re-injects after a ShellUI
  * restart (new pid, e.g. Rest Mode resume). */
 static void *injector_thread(void *) {
   pid_t injected_pid = -1;
+  const unsigned initial_delay = initial_inject_delay_sec();
+  LOG_INFO("waiting %us before the first injection", initial_delay);
+  for (unsigned i = 0;
+       i < initial_delay && !g_stack_shutting_down.load(std::memory_order_acquire);
+       ++i)
+    sleep(1);
+  pid_t waiting_pid = -1;
+  double wait_started = 0.0;
   while (!g_stack_shutting_down.load(std::memory_order_acquire)) {
     const pid_t pid = onion_find_pid("SceShellUI");
     if (pid > 0 && pid != injected_pid &&
         !onion_ready_matches_pid(ONION_READY_TOOLBOX, pid)) {
+      if (waiting_pid != pid) {
+        waiting_pid = pid;
+        wait_started = mono_sec();
+      }
+      if (!shellui_ready_for_inject(pid)) {
+        static double last_log = 0.0;
+        const double now = mono_sec();
+        if (now - last_log >= 10.0) {
+          LOG_INFO("waiting for SceShellUI pid=%d NpTrophy modules (%.0fs)",
+                   static_cast<int>(pid), now - wait_started);
+          last_log = now;
+        }
+        sleep(1);
+        continue;
+      }
+      LOG_INFO("SceShellUI pid=%d ready for inject after %.1fs",
+               static_cast<int>(pid), mono_sec() - wait_started);
       LOG_INFO("injecting fps overlay into SceShellUI pid=%d",
                static_cast<int>(pid));
       if (Inject_Toolbox(static_cast<int>(pid), fps_overlay_elf_start) &&
-          onion_ready_wait_pid(ONION_READY_TOOLBOX, pid, 45000, 250)) {
+          wait_overlay_ready(pid, 45000)) {
         injected_pid = pid;
         LOG_INFO("fps overlay ready (pid=%d)", static_cast<int>(pid));
       } else {
@@ -97,6 +179,9 @@ bool Get_Running_App_TID(std::string &title_id, int &BigAppid) {
  * game memory, kernel memory, or PS4 compatibility hooks. */
 static constexpr unsigned kWarmupSec = 0;
 static constexpr useconds_t kSafeSampleUs = 100000; /* 10 Hz */
+/* Idle loop pass (home screen / no sample): keep publishing the heartbeat well
+ * inside ONION_FPS_HEARTBEAT_TIMEOUT_NS so a killed payload is noticed fast. */
+static constexpr useconds_t kIdleHeartbeatUs = 200000;
 
 static double mono_sec() {
   struct timespec ts{};
@@ -266,7 +351,7 @@ static void *safe_sampler_thread(void *) {
       have = false;
       wn = wi = 0;
       publish_sample(false, nullptr, 0.f);
-      sleep(1);
+      usleep(kIdleHeartbeatUs);
       continue;
     }
     if (tid != cached_tid) {
@@ -280,10 +365,11 @@ static void *safe_sampler_thread(void *) {
     }
     if (mono_sec() - started < kWarmupSec) {
       publish_sample(false, tid.c_str(), 0.f);
-      sleep(1);
+      usleep(kIdleHeartbeatUs);
       continue;
     }
 
+    bool published = false;
     uint64_t count = 0;
     if (dce.sample(&count)) {
       const double now = mono_sec();
@@ -297,6 +383,7 @@ static void *safe_sampler_thread(void *) {
             ++wn;
           publish_sample(true, tid.c_str(),
                          onion::fps::rolling_mean(window, wn));
+          published = true;
         }
       }
       last_count = count;
@@ -310,8 +397,13 @@ static void *safe_sampler_thread(void *) {
       }
       /* Keep the heartbeat alive; the overlay hides itself if it stops. */
       publish_sample(false, tid.c_str(), 0.f);
-      sleep(1);
+      published = true;
     }
+    /* Every pass is a heartbeat, even when there is no new frame data (paused
+     * game, transient ioctl failure): repeat the last known value. */
+    if (!published)
+      publish_sample(wn > 0, tid.c_str(),
+                     wn > 0 ? onion::fps::rolling_mean(window, wn) : 0.f);
     usleep(kSafeSampleUs);
   }
   publish_shutdown();
@@ -322,7 +414,25 @@ static void on_term(int) {
   g_stack_shutting_down.store(true, std::memory_order_release);
 }
 
+/* Loaders hand the payload their connection as stdin/stdout/stderr and may wait
+ * for it to close (an on-console payload manager blocks its UI on that and the
+ * system reports an error after ~10 s; a PC sender does not care). Point the
+ * standard descriptors at /dev/null so the loader's end is released, and ignore
+ * SIGPIPE/SIGHUP so a loader that goes away cannot kill the payload. */
+static void detach_from_loader(void) {
+  signal(SIGPIPE, SIG_IGN);
+  signal(SIGHUP, SIG_IGN);
+  const int fd = open("/dev/null", O_RDWR);
+  if (fd < 0)
+    return;
+  for (int target = 0; target <= 2; ++target)
+    (void)dup2(fd, target);
+  if (fd > 2)
+    close(fd);
+}
+
 int main() {
+  detach_from_loader();
   mkdir(ONION_SYSTEM_TMP_ROOT, 0777);
   onion_log_configure("FPS", "/data/onion_fps.log");
   onion_log_set_level(ONION_LOG_INFO);
@@ -342,12 +452,12 @@ int main() {
   LOG_INFO("standalone fps counter started (safe scanout-only mode + overlay)");
 
   /* kstuff is optional. With it, userland mprotect(RWX) works; without it the
-   * detour code falls back to a kernel mprotect. If the console's hypervisor
+   * overlay's detour code falls back to a kernel mprotect. If the console
    * refuses both, injection fails and is retried (see the log). */
   if (fps_kstuff_active())
     LOG_INFO("kstuff detected");
   else
-    LOG_WARN("kstuff not detected; trying to inject anyway");
+    LOG_WARN("kstuff not detected; injecting anyway (kernel mprotect fallback)");
 
   /* Preflight 2: never inject twice. A live overlay is marked ready for the
    * current SceShellUI pid; the injector thread skips it, and a new ShellUI

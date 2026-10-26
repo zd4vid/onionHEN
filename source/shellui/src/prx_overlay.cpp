@@ -162,8 +162,12 @@ namespace {
 constexpr int kMaxProcThreads = 3072;
 constexpr int kCpuCores = 8;
 constexpr int kOverlayInitDelayFrames = 30;
-constexpr int kOverlayUpdateIntervalFrames = 60;
-constexpr int kFpsUpdateIntervalFrames = 2;
+/* Every value (FPS, temps, RAM/VRAM, fan, CPU usage, IP) refreshes together every
+ * 750 ms of wall time, independent of the frame rate. */
+constexpr uint64_t kOverlayUpdateIntervalNs = 750000000ull;
+#ifndef ONIONHEN_FPS_OVERLAY_ONLY
+constexpr int kFpsUpdateIntervalFrames = 2; /* full build: FPS refreshes faster */
+#endif
 
 constexpr int kClockIdRealtime = 4;
 constexpr int kVmSystem = 1;
@@ -738,20 +742,65 @@ void format_fps_text(char *buf, size_t buf_sz) {
 
 #ifdef ONIONHEN_FPS_OVERLAY_ONLY
 /* RAM/VRAM page-table stats. In games the system VM (kVmSystem) reports them,
- * but on the home screen it can report 0/0, so fall back to the other VM ids
- * and use the first one with a non-zero total. */
+ * but on the home screen it can report 0/0. Other VM ids are only probed once
+ * the home screen has been stable for a few updates (never while a game is
+ * starting or running, when VM state is changing under us), and the id that
+ * worked is remembered so the others are not queried again. */
+constexpr int kHomeStableUpdates = 2; /* 2 ticks = 1.5 s */
+int g_home_stable_updates = 0;
+int g_cached_vm[3] = {-1, -1, -1}; /* per page-table type; -1 = none yet */
+
+void note_home_state() {
+  if (fps_no_game_running()) {
+    if (g_home_stable_updates < kHomeStableUpdates)
+      ++g_home_stable_updates;
+  } else {
+    g_home_stable_updates = 0;
+  }
+}
+
+bool query_vm(int vm, int type, Memory &m) {
+  int total = 0, free_pages = 0;
+  if (get_page_table_stats(vm, type, &total, &free_pages) == -1 || total <= 0)
+    return false;
+  /* A running console always has pages in use. A VM that reports a total but
+   * nothing used is one that is torn down or not populated yet (right after a
+   * game quits), not a real reading, so it must not be shown as 0 MB. */
+  if (free_pages < 0 || free_pages >= total)
+    return false;
+  m.Total = total;
+  m.Free = free_pages;
+  m.Used = total - free_pages;
+  return true;
+}
+
 void get_mem_stats(int type, Memory &m) {
-  static const int kVms[] = {kVmSystem, 0, 2, 3};
-  for (int vm : kVms) {
-    int total = 0, free_pages = 0;
-    if (get_page_table_stats(vm, type, &total, &free_pages) == -1 || total <= 0)
-      continue;
-    m.Total = total;
-    m.Free = free_pages;
-    m.Used = total - free_pages;
+  const int slot = (type >= 0 && type < 3) ? type : 0;
+  if (query_vm(kVmSystem, type, m)) {
+    if (g_home_stable_updates >= kHomeStableUpdates)
+      g_cached_vm[slot] = kVmSystem;
     return;
   }
-  m.Used = m.Free = m.Total = 0;
+  /* The system VM reports 0/0 on the home screen, including the first seconds
+   * after a game quits. Use the id that worked on the home screen before; it
+   * is known good, so it is safe to query straight away. */
+  if (g_cached_vm[slot] >= 0 && query_vm(g_cached_vm[slot], type, m))
+    return;
+  /* Other ids are only probed once the home screen has been stable for a few
+   * updates, never while a game is starting or running. */
+  if (g_home_stable_updates >= kHomeStableUpdates) {
+    static const int kFallbackVms[] = {0, 2, 3};
+    for (int vm : kFallbackVms) {
+      if (query_vm(vm, type, m)) {
+        g_cached_vm[slot] = vm;
+        return;
+      }
+    }
+    m.Used = m.Free = m.Total = 0;
+    return;
+  }
+  /* Nothing usable yet (transition): keep showing the previous reading
+   * instead of flashing 0 MB. */
 }
 #endif
 
@@ -764,6 +813,9 @@ void update_overlay_metrics(unsigned int idle_tid[kCpuCores], int& current_bank,
   if (!g_settings.overlay_enabled)
     return;
 
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+  note_home_state();
+#endif
   sample_cpu_usage(idle_tid, current_bank, cpu_usage, cpu_usage_sz);
 
   if (g_settings.overlay_ram) {
@@ -845,8 +897,7 @@ void OnRender_Hook(MonoObject* instance) {
   static bool inited = false;
   static unsigned int idle_thread_id[kCpuCores] = {};
   static int current_bank = 0;
-  static int frames_until_update = 0;
-  static int frames_until_fps = 0;
+  static uint64_t next_update_ns = 0;
   static int frames_until_init = kOverlayInitDelayFrames;
   static char gpu_temp[32] = {};
   static char gpu_usage[32] = {};
@@ -864,6 +915,7 @@ void OnRender_Hook(MonoObject* instance) {
       RemoveGameWidget(REMOVE_ALL_OVERLAYS);
       inited = false;
       frames_until_init = kOverlayInitDelayFrames;
+      next_update_ns = 0;
     }
     OnRender_orig(instance);
     return;
@@ -883,19 +935,32 @@ void OnRender_Hook(MonoObject* instance) {
     }
   }
 
-  if (frames_until_update <= 0) {
+  struct timespec metrics_ts {};
+  clock_gettime(CLOCK_MONOTONIC, &metrics_ts);
+  const uint64_t metrics_now_ns =
+      static_cast<uint64_t>(metrics_ts.tv_sec) * 1000000000ull +
+      static_cast<uint64_t>(metrics_ts.tv_nsec);
+  /* One tick every 750 ms drives every value, FPS included, so the rows change
+   * together. */
+  const bool tick = metrics_now_ns >= next_update_ns;
+  if (tick) {
     update_overlay_metrics(idle_thread_id, current_bank, cpu_temp,
                            sizeof(cpu_temp), cpu_usage, sizeof(cpu_usage),
                            gpu_temp, sizeof(gpu_temp), gpu_usage,
                            sizeof(gpu_usage), ram_str, sizeof(ram_str),
                            ip_address, sizeof(ip_address), fan_str,
                            sizeof(fan_str));
-    frames_until_update = kOverlayUpdateIntervalFrames;
-  } else {
-    frames_until_update--;
+    next_update_ns = metrics_now_ns + kOverlayUpdateIntervalNs;
   }
 
-  if (frames_until_fps <= 0) {
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+  const bool layout_tick = tick; /* standalone overlay: everything in sync */
+#else
+  static int frames_until_fps = 0;
+  const bool layout_tick = frames_until_fps <= 0;
+  frames_until_fps = layout_tick ? kFpsUpdateIntervalFrames : frames_until_fps - 1;
+#endif
+  if (layout_tick) {
 #ifdef ONIONHEN_FPS_OVERLAY_ONLY
     update_overlay_title();
 #endif
@@ -914,9 +979,6 @@ void OnRender_Hook(MonoObject* instance) {
         g_settings.overlay_ram ? ram_str : nullptr,
         g_settings.overlay_ip ? ip_address : nullptr,
         g_settings.overlay_fan ? fan_str : nullptr);
-    frames_until_fps = kFpsUpdateIntervalFrames;
-  } else {
-    frames_until_fps--;
   }
 
   OnRender_orig(instance);

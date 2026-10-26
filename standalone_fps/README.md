@@ -16,14 +16,16 @@ The overlay module `shellui.elf` is an intermediate under `build/internal/`;
 never load it separately (it is already embedded, and loading it on its own
 fails).
 
-kstuff is optional. The payload logs `kstuff detected` or `kstuff not detected;
-trying to inject anyway` and injects either way. If the console's hypervisor
-refuses to make the needed pages writable, injection fails and is retried every
-few seconds (`fps overlay injection failed ... retrying`). It also checks that
-SceShellUI does not already have the overlay.
+kstuff is optional. The payload logs whether it is running; without it the
+overlay's hooks fall back to a kernel mprotect. It also skips injection if
+SceShellUI already has the overlay, and waits 3 s before the first injection
+(change it by writing a number of seconds to `/data/onion_fps_delay`; 0
+disables the wait).
 
-Log: `/data/onion_fps.log` - look for `injecting fps overlay` followed by
-`fps overlay ready`.
+All values, FPS included, refresh together every 750 ms.
+
+Log: `/data/onion_fps.log` - look for `kstuff detected` (or the warning that it
+was not), then `injecting fps overlay` followed by `fps overlay ready`.
 
 Appearance is fixed in code: layout in `layout_bar_labels()`
 (`source/shellui/src/prx_overlay.cpp`), font size in
