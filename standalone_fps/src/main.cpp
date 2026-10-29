@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <string>
 
 #include <ctime>
@@ -88,14 +89,14 @@ static bool wait_overlay_ready(pid_t pid, int timeout_ms) {
   return onion_ready_matches_pid(ONION_READY_TOOLBOX, pid);
 }
 
-/* Seconds to wait before the first injection (default 3). OnionHEN spends
+/* Seconds to wait before the first injection (default 5). OnionHEN spends
  * 20+ s starting its services before its daemon touches SceShellUI; injecting within a few
  * milliseconds of being loaded from the on-console payload manager (a web page
  * that is still busy handing the payload over) hung the browser until the
  * system raised an error. Override with a plain number in
  * /data/onion_fps_delay (0 disables the wait). */
 static unsigned initial_inject_delay_sec() {
-  unsigned delay = 3;
+  unsigned delay = 5;
   FILE *f = std::fopen("/data/onion_fps_delay", "r");
   if (f) {
     unsigned v = 0;
@@ -177,11 +178,7 @@ bool Get_Running_App_TID(std::string &title_id, int &BigAppid) {
  * The full render counter / PS4 BC hook path is intentionally removed. The
  * standalone FPS payload must stay in the scanout-only path so it cannot touch
  * game memory, kernel memory, or PS4 compatibility hooks. */
-static constexpr unsigned kWarmupSec = 0;
-static constexpr useconds_t kSafeSampleUs = 100000; /* 10 Hz */
-/* Idle loop pass (home screen / no sample): keep publishing the heartbeat well
- * inside ONION_FPS_HEARTBEAT_TIMEOUT_NS so a killed payload is noticed fast. */
-static constexpr useconds_t kIdleHeartbeatUs = 200000;
+static constexpr useconds_t kSafeSampleUs = 100000; /* 10 Hz, also the heartbeat */
 
 static double mono_sec() {
   struct timespec ts{};
@@ -330,80 +327,174 @@ static void publish_shutdown() {
   onion::fps::publish(s);
 }
 
+/* Passes (one per kSafeSampleUs) the running-app lookup may fail in a row
+ * before the title is treated as gone. A transient failure must not throw away
+ * the last FPS value: on a static screen (paused game) no new frames arrive, so
+ * a wiped value would stay "--" until the picture moves again. */
+static constexpr int kAppLostPasses = 5;
+/* Passes of scanout read failures in a row (5 s) before /dev/dce is reopened. */
+static constexpr int kDceReopenPasses = 50;
+static constexpr int kDceMaxReopensPerTitle = 6;
+/* A scanout rate measured this recently may seed a title that has no value yet. */
+static constexpr double kSeedFreshSec = 1.5;
+/* The last value of a title is reused if the same title shows up again within
+ * this long (paused/static screens produce no frames to re-measure). */
+static constexpr double kHoldSameTitleSec = 7200.0;
+static constexpr double kStallLogSec = 10.0;
+
 static void *safe_sampler_thread(void *) {
-  onion::fps::DceSource dce;
+  std::unique_ptr<onion::fps::DceSource> dce(new onion::fps::DceSource());
   std::string cached_tid;
-  double started = 0.0;
   bool have = false;
   uint64_t last_count = 0;
   double last_t = 0.0;
   float window[onion::fps::kWindow]{};
   int wn = 0, wi = 0;
+
+  /* Latest rate measured from the scanout counter, whatever is on screen. The
+   * counter is read all the time (not only while a game runs) so that a game
+   * start already has a baseline and a recent rate to show. */
+  float recent_hz = 0.f;
+  double recent_hz_t = 0.0;
+  /* Last value shown for a title, reused if that title reappears. */
+  std::string good_tid;
+  float good_fps = 0.f;
+  double good_t = 0.0;
+
+  int lost_passes = 0;
+  int dce_fail_passes = 0;
+  int reopens_this_title = 0;
+  double last_advance_t = 0.0;
+  bool stall_logged = false;
+  double detected_t = 0.0;
+  bool first_value_pending = false;
+
   (void)onion::fps::publish_open();
-  LOG_INFO("safe fps sampler started (scanout only, warmup %us)", kWarmupSec);
+  LOG_INFO("safe fps sampler started (scanout only)");
 
   while (!g_stack_shutting_down.load(std::memory_order_acquire)) {
-    std::string tid;
-    int app_id = 0;
-    if (!Get_Running_App_TID(tid, app_id)) {
-      cached_tid.clear();
-      g_title_name.clear();
-      have = false;
-      wn = wi = 0;
-      publish_sample(false, nullptr, 0.f);
-      usleep(kIdleHeartbeatUs);
-      continue;
-    }
-    if (tid != cached_tid) {
-      cached_tid = tid;
-      g_title_name = resolve_title_name(tid);
-      LOG_INFO("safe fps: title name '%s'", g_title_name.c_str());
-      started = mono_sec();
-      have = false;
-      wn = wi = 0;
-      LOG_INFO("safe fps: game %s detected; sampling immediately", tid.c_str());
-    }
-    if (mono_sec() - started < kWarmupSec) {
-      publish_sample(false, tid.c_str(), 0.f);
-      usleep(kIdleHeartbeatUs);
-      continue;
-    }
+    const double now = mono_sec();
 
-    bool published = false;
+    /* 1. Scanout counter. */
     uint64_t count = 0;
-    if (dce.sample(&count)) {
-      const double now = mono_sec();
+    if (dce->sample(&count)) {
+      dce_fail_passes = 0;
       if (have && count > last_count && now > last_t) {
         const double hz =
             onion::fps::hz_from_delta(count - last_count, now - last_t);
+        last_advance_t = now;
+        if (stall_logged) {
+          LOG_INFO("safe fps: frames resumed");
+          stall_logged = false;
+        }
         if (hz > 0.0) {
-          window[wi] = static_cast<float>(hz);
+          recent_hz = static_cast<float>(hz);
+          recent_hz_t = now;
+          window[wi] = recent_hz;
           wi = (wi + 1) % onion::fps::kWindow;
           if (wn < onion::fps::kWindow)
             ++wn;
-          publish_sample(true, tid.c_str(),
-                         onion::fps::rolling_mean(window, wn));
-          published = true;
+          /* Samples only count towards a title while one is running. */
+          if (cached_tid.empty())
+            wn = wi = 0;
         }
+      } else if (have && count < last_count) {
+        LOG_WARN("safe fps: flip counter went backwards; new baseline");
       }
       last_count = count;
       last_t = now;
       have = true;
-    } else if (dce.unavailable()) {
-      static bool logged = false;
-      if (!logged) {
-        LOG_ERROR("safe fps: /dev/dce unavailable");
-        logged = true;
+    } else {
+      have = false;
+      ++dce_fail_passes;
+      /* A stale /dev/dce (display reinitialised, long idle) never recovers by
+       * itself; start over with a fresh handle while a title is running. */
+      if (dce_fail_passes >= kDceReopenPasses && !cached_tid.empty() &&
+          reopens_this_title < kDceMaxReopensPerTitle) {
+        ++reopens_this_title;
+        LOG_WARN("safe fps: scanout read keeps failing (errno %d); reopening "
+                 "/dev/dce (%d/%d)",
+                 dce->last_errno(), reopens_this_title, kDceMaxReopensPerTitle);
+        dce.reset(new onion::fps::DceSource());
+        dce_fail_passes = 0;
       }
-      /* Keep the heartbeat alive; the overlay hides itself if it stops. */
-      publish_sample(false, tid.c_str(), 0.f);
-      published = true;
     }
-    /* Every pass is a heartbeat, even when there is no new frame data (paused
-     * game, transient ioctl failure): repeat the last known value. */
-    if (!published)
-      publish_sample(wn > 0, tid.c_str(),
-                     wn > 0 ? onion::fps::rolling_mean(window, wn) : 0.f);
+
+    /* 2. Running title, with a short debounce on lookup failures. */
+    std::string tid;
+    int app_id = 0;
+    if (!Get_Running_App_TID(tid, app_id)) {
+      if (!cached_tid.empty() && ++lost_passes < kAppLostPasses) {
+        publish_sample(wn > 0, cached_tid.c_str(),
+                       wn > 0 ? onion::fps::rolling_mean(window, wn) : 0.f);
+        usleep(kSafeSampleUs);
+        continue;
+      }
+      if (!cached_tid.empty())
+        LOG_INFO("safe fps: game %s gone", cached_tid.c_str());
+      cached_tid.clear();
+      g_title_name.clear();
+      wn = wi = 0;
+      lost_passes = 0;
+      publish_sample(false, nullptr, 0.f);
+      usleep(kSafeSampleUs);
+      continue;
+    }
+    lost_passes = 0;
+
+    if (tid != cached_tid) {
+      cached_tid = tid;
+      g_title_name = resolve_title_name(tid);
+      LOG_INFO("safe fps: game %s detected, title name '%s'", tid.c_str(),
+               g_title_name.c_str());
+      wn = wi = 0;
+      detected_t = now;
+      first_value_pending = true;
+      stall_logged = false;
+      reopens_this_title = 0;
+      last_advance_t = now;
+
+      /* Show something straight away instead of "--" until frames are seen. */
+      float seed = 0.f;
+      const char *why = nullptr;
+      if (tid == good_tid && good_fps >= onion::fps::kFpsMin &&
+          now - good_t < kHoldSameTitleSec) {
+        seed = good_fps;
+        why = "last value of this title";
+      } else if (recent_hz >= onion::fps::kFpsMin &&
+                 recent_hz <= onion::fps::kFpsMax &&
+                 now - recent_hz_t < kSeedFreshSec) {
+        seed = recent_hz;
+        why = "current scanout rate";
+      }
+      if (seed > 0.f) {
+        window[0] = seed;
+        wi = 1 % onion::fps::kWindow;
+        wn = 1;
+        LOG_INFO("safe fps: seeded with %.1f fps (%s)", seed, why);
+      }
+    }
+
+    if (!stall_logged && now - last_advance_t >= kStallLogSec) {
+      LOG_INFO("safe fps: no new frames for %.0f s (%s)", kStallLogSec,
+               wn > 0 ? "holding the last value" : "nothing to show yet");
+      stall_logged = true;
+    }
+
+    /* Every pass is a heartbeat; with no new frame data (paused game,
+     * transient ioctl failure) the last known value is repeated. */
+    const float shown = wn > 0 ? onion::fps::rolling_mean(window, wn) : 0.f;
+    if (wn > 0) {
+      good_tid = tid;
+      good_fps = shown;
+      good_t = now;
+      if (first_value_pending) {
+        LOG_INFO("safe fps: first value %.1f fps, %.0f ms after detection",
+                 shown, (now - detected_t) * 1000.0);
+        first_value_pending = false;
+      }
+    }
+    publish_sample(wn > 0, tid.c_str(), shown);
     usleep(kSafeSampleUs);
   }
   publish_shutdown();

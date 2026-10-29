@@ -18,7 +18,7 @@ fails).
 
 kstuff is optional. The payload logs whether it is running; without it the
 overlay's hooks fall back to a kernel mprotect. It also skips injection if
-SceShellUI already has the overlay, and waits 3 s before the first injection
+SceShellUI already has the overlay, and waits 5 s before the first injection
 (change it by writing a number of seconds to `/data/onion_fps_delay`; 0
 disables the wait).
 
@@ -36,5 +36,5 @@ metrics/position in `fps_overlay_only_main()` (`source/shellui/src/prx.cpp`).
 Stopping the payload: on a clean exit (SIGTERM/SIGINT) it publishes a shutdown
 marker and the overlay removes all its widgets at once. If the payload is
 killed outright, the overlay notices that the heartbeat (the payload publishes
-at least once a second) stopped for 4 s and removes its widgets too. Starting
+several times a second) stopped for 1 s and removes its widgets too. Starting
 the payload again brings the overlay back without re-injecting.

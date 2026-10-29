@@ -750,12 +750,26 @@ constexpr int kHomeStableUpdates = 2; /* 2 ticks = 1.5 s */
 int g_home_stable_updates = 0;
 int g_cached_vm[3] = {-1, -1, -1}; /* per page-table type; -1 = none yet */
 
+/* A running game's GPU memory is not always accounted to the system VM (id 1):
+ * VRAM then reads 0% or a few MB even in very demanding titles, while other
+ * games read correctly. While a game runs, VRAM is therefore read from every
+ * VM id in range and the one with the most pages in use is shown (the game's
+ * own VM dwarfs the shell's). Scanning starts after the title has been up for
+ * a few updates so a game that is still starting is left alone. */
+constexpr int kGameScanUpdates = 2;  /* 2 ticks = 1.5 s */
+constexpr int kVramScanMaxVm = 7;    /* ids 0..7 */
+constexpr int kVmDebugMaxVm = 15;    /* debug dump covers 0..15 */
+int g_game_updates = 0;
+
 void note_home_state() {
   if (fps_no_game_running()) {
     if (g_home_stable_updates < kHomeStableUpdates)
       ++g_home_stable_updates;
+    g_game_updates = 0;
   } else {
     g_home_stable_updates = 0;
+    if (g_game_updates < kGameScanUpdates)
+      ++g_game_updates;
   }
 }
 
@@ -774,8 +788,62 @@ bool query_vm(int vm, int type, Memory &m) {
   return true;
 }
 
+/* Reads `type` from every VM id in range and keeps the busiest one. */
+bool query_busiest_vm(int type, Memory &m) {
+  bool found = false;
+  Memory best{};
+  for (int vm = 0; vm <= kVramScanMaxVm; ++vm) {
+    Memory cand{};
+    if (!query_vm(vm, type, cand))
+      continue;
+    if (!found || cand.Used > best.Used) {
+      best = cand;
+      found = true;
+    }
+  }
+  if (found)
+    m = best;
+  return found;
+}
+
+/* Opt-in diagnostics: when /data/onion_fps_vmdebug exists, every ~6 s while a
+ * game runs the raw page-table numbers of VM ids 0..15 are appended to
+ * /data/onion_fps_vmscan.log (capped), to see which id holds the game's VRAM. */
+void dump_vm_debug() {
+  static int ticks = 0;
+  static int dumps = 0;
+  if (dumps >= 200 || ++ticks < 8)
+    return;
+  ticks = 0;
+  FILE *flag = std::fopen("/data/onion_fps_vmdebug", "r");
+  if (!flag)
+    return;
+  std::fclose(flag);
+  OnionFpsSample s{};
+  char tid[sizeof(s.title_id) + 1] = {};
+  if (fps_raw_sample(&s))
+    std::memcpy(tid, s.title_id, sizeof(s.title_id));
+  FILE *out = std::fopen("/data/onion_fps_vmscan.log", "a");
+  if (!out)
+    return;
+  ++dumps;
+  std::fprintf(out, "--- %s\n", tid[0] ? tid : "(no game)");
+  for (int vm = 0; vm <= kVmDebugMaxVm; ++vm) {
+    for (int type = kPageTableRam; type <= kPageTableVram; ++type) {
+      int total = 0, free_pages = 0;
+      const int rc = get_page_table_stats(vm, type, &total, &free_pages);
+      std::fprintf(out, "vm%d type%d rc=%d total=%d free=%d used=%d\n", vm, type,
+                   rc, total, free_pages, total - free_pages);
+    }
+  }
+  std::fclose(out);
+}
+
 void get_mem_stats(int type, Memory &m) {
   const int slot = (type >= 0 && type < 3) ? type : 0;
+  if (type == kPageTableVram && g_game_updates >= kGameScanUpdates &&
+      !fps_no_game_running() && query_busiest_vm(type, m))
+    return;
   if (query_vm(kVmSystem, type, m)) {
     if (g_home_stable_updates >= kHomeStableUpdates)
       g_cached_vm[slot] = kVmSystem;
@@ -815,6 +883,8 @@ void update_overlay_metrics(unsigned int idle_tid[kCpuCores], int& current_bank,
 
 #ifdef ONIONHEN_FPS_OVERLAY_ONLY
   note_home_state();
+  if (g_game_updates >= kGameScanUpdates)
+    dump_vm_debug();
 #endif
   sample_cpu_usage(idle_tid, current_bank, cpu_usage, cpu_usage_sz);
 
@@ -954,7 +1024,19 @@ void OnRender_Hook(MonoObject* instance) {
   }
 
 #ifdef ONIONHEN_FPS_OVERLAY_ONLY
-  const bool layout_tick = tick; /* standalone overlay: everything in sync */
+  /* Everything refreshes together on the tick, except that a "--" is replaced
+   * as soon as a value exists (polled every 100 ms) so a game that just started
+   * does not show "--" until the next 750 ms tick. */
+  static uint64_t next_fps_probe_ns = 0;
+  bool fps_arrived = false;
+  if (!tick && g_settings.overlay_fps && fps_str[0] == '-' &&
+      metrics_now_ns >= next_fps_probe_ns) {
+    next_fps_probe_ns = metrics_now_ns + 100000000ull;
+    char probe[sizeof(fps_str)] = {};
+    format_fps_text(probe, sizeof(probe));
+    fps_arrived = probe[0] != '-';
+  }
+  const bool layout_tick = tick || fps_arrived;
 #else
   static int frames_until_fps = 0;
   const bool layout_tick = frames_until_fps <= 0;
