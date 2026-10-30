@@ -60,6 +60,40 @@ static bool flag_file(const char *path) { return access(path, F_OK) == 0; }
  * /data/onion_fps_nodce = injection only (no /dev/dce reads). */
 static constexpr int kMaxInjectAttempts = 3;
 
+/* The ready marker under /system_tmp can disappear while the overlay's hook is
+ * still live in SceShellUI (seen on hardware: a second payload run injected a
+ * second copy into the same pid and froze the console). Keep our own record,
+ * with the boot time so a reboot that reuses the pid does not match. */
+static constexpr const char *kInjectedRecord = "/data/onion_fps_injected";
+
+static long boot_epoch_sec() {
+  struct timespec rt{}, mt{};
+  clock_gettime(CLOCK_REALTIME, &rt);
+  clock_gettime(CLOCK_MONOTONIC, &mt);
+  return static_cast<long>(rt.tv_sec - mt.tv_sec);
+}
+
+static bool already_injected_record(pid_t pid) {
+  FILE *f = std::fopen(kInjectedRecord, "r");
+  if (!f)
+    return false;
+  long rpid = 0, rboot = 0;
+  const bool ok = std::fscanf(f, "%ld %ld", &rpid, &rboot) == 2;
+  std::fclose(f);
+  if (!ok || rpid != static_cast<long>(pid))
+    return false;
+  const long d = boot_epoch_sec() - rboot;
+  return d > -120 && d < 120;
+}
+
+static void record_injected(pid_t pid) {
+  FILE *f = std::fopen(kInjectedRecord, "w");
+  if (!f)
+    return;
+  std::fprintf(f, "%ld %ld\n", static_cast<long>(pid), boot_epoch_sec());
+  std::fclose(f);
+}
+
 /* The full daemon never ELF-loads into SceShellUI until these modules are
  * mapped (same gate kstuff uses; see source/daemon/source/daemon_inject.cpp).
  * Cheap safety check; it passes immediately on a console that has been up. */
@@ -178,6 +212,16 @@ static void *injector_thread(void *) {
       }
       LOG_INFO("SceShellUI pid=%d ready for inject after %.1fs",
                static_cast<int>(pid), mono_sec() - wait_started);
+      if (already_injected_record(pid)) {
+        LOG_WARN("SceShellUI pid=%d already has an overlay from an earlier run; "
+                 "not injecting again (reboot to load a new overlay build)",
+                 static_cast<int>(pid));
+        injected_pid = pid;
+        attempts_pid = pid;
+        attempts = kMaxInjectAttempts;
+        sleep(3);
+        continue;
+      }
       if (attempts_pid != pid) {
         attempts_pid = pid;
         attempts = 0;
@@ -194,6 +238,7 @@ static void *injector_thread(void *) {
          * this process, even if it is slow to report ready. */
         injected_pid = pid;
         attempts = kMaxInjectAttempts;
+        record_injected(pid);
         if (wait_overlay_ready(pid, 45000))
           LOG_INFO("fps overlay ready (pid=%d)", static_cast<int>(pid));
         else
