@@ -162,6 +162,8 @@ namespace {
 constexpr int kMaxProcThreads = 3072;
 constexpr int kCpuCores = 8;
 constexpr int kOverlayInitDelayFrames = 30;
+constexpr uint64_t kInitBackoffMinNs = 1000000000ull;  /* 1 s */
+constexpr uint64_t kInitBackoffMaxNs = 10000000000ull; /* 10 s */
 /* Every value (FPS, temps, RAM/VRAM, fan, CPU usage, IP) refreshes together every
  * 750 ms of wall time, independent of the frame rate. */
 constexpr uint64_t kOverlayUpdateIntervalNs = 750000000ull;
@@ -705,7 +707,7 @@ void update_overlay_title() {
   static int empty_reads = 0;
   static char name_tid[17] = {};
   static char name_keep[65] = {};
-  constexpr int kEmptyReadsToHide = 3;
+  constexpr int kEmptyReadsToHide = 1;
 
   OnionFpsSample local;
   if (!fps_raw_sample(&local))
@@ -944,8 +946,20 @@ void update_overlay_metrics(unsigned int idle_tid[kCpuCores], int& current_bank,
 #endif
   }
 
-  if (g_settings.overlay_ip)
-    (void)onion_net_get_ip_address(ip_address, ip_sz);
+  if (g_settings.overlay_ip) {
+    /* A network-stack query on the UI thread: once every 10 s is plenty (every
+     * 2 s until an address has been obtained). */
+    static uint64_t next_ip_ns = 0;
+    struct timespec ip_ts {};
+    clock_gettime(CLOCK_MONOTONIC, &ip_ts);
+    const uint64_t ip_now_ns = static_cast<uint64_t>(ip_ts.tv_sec) * 1000000000ull +
+                               static_cast<uint64_t>(ip_ts.tv_nsec);
+    if (ip_now_ns >= next_ip_ns) {
+      const bool got = onion_net_get_ip_address(ip_address, ip_sz) ==
+                       ONION_NET_IP_OK;
+      next_ip_ns = ip_now_ns + (got ? 10000000000ull : 2000000000ull);
+    }
+  }
 
   if (g_settings.overlay_cpu || g_settings.all_cpu_usage) {
     int cpu_t = 0;
@@ -997,6 +1011,10 @@ void OnRender_Hook(MonoObject* instance) {
   static char ip_address[64] = {};
   static char fan_str[32] = "--%";
   static char fps_str[16] = "--";
+  static uint64_t next_init_try_ns = 0;
+  static uint64_t init_backoff_ns = kInitBackoffMinNs;
+  static char last_layout_sig[640] = {};
+  static uint64_t next_forced_layout_ns = 0;
 
 #ifdef ONIONHEN_FPS_OVERLAY_ONLY
   /* Payload gone (exited or killed): take the overlay down and stay idle. */
@@ -1006,6 +1024,9 @@ void OnRender_Hook(MonoObject* instance) {
       inited = false;
       frames_until_init = kOverlayInitDelayFrames;
       next_update_ns = 0;
+      next_init_try_ns = 0;
+      init_backoff_ns = kInitBackoffMinNs;
+      last_layout_sig[0] = '\0';
     }
     OnRender_orig(instance);
     return;
@@ -1016,8 +1037,27 @@ void OnRender_Hook(MonoObject* instance) {
   if (!inited) {
     if (frames_until_init > 0) {
       --frames_until_init;
-    } else if (init_overlay_once(idle_thread_id)) {
-      inited = true;
+    } else {
+      /* A failed init (no root widget yet, widgets refused) does a lot of work:
+       * thread scan, font and widget creation and removal. Frames only come
+       * when something on screen moves (e.g. the cursor over a browser page),
+       * so retrying on every frame stalled the UI thread until the system
+       * raised an error. Back off between attempts instead. */
+      struct timespec its {};
+      clock_gettime(CLOCK_MONOTONIC, &its);
+      const uint64_t init_now_ns =
+          static_cast<uint64_t>(its.tv_sec) * 1000000000ull +
+          static_cast<uint64_t>(its.tv_nsec);
+      if (init_now_ns >= next_init_try_ns) {
+        if (init_overlay_once(idle_thread_id)) {
+          inited = true;
+          init_backoff_ns = kInitBackoffMinNs;
+          last_layout_sig[0] = '\0';
+        } else {
+          next_init_try_ns = init_now_ns + init_backoff_ns;
+          init_backoff_ns = std::min(init_backoff_ns * 2, kInitBackoffMaxNs);
+        }
+      }
     }
     if (!inited) {
       OnRender_orig(instance);
@@ -1070,6 +1110,22 @@ void OnRender_Hook(MonoObject* instance) {
       format_fps_text(fps_str, sizeof(fps_str));
     else
       fps_str[0] = '\0';
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+    /* Re-laying out the widgets is the costly part of a tick; do it only when a
+     * shown text changed (and at least every 5 s as a safety refresh). */
+    char sig[sizeof(last_layout_sig)];
+    std::snprintf(sig, sizeof(sig), "%s|%s|%s|%s|%s|%s|%s", fps_str, cpu_temp,
+                  gpu_temp, ram_str, ip_address, fan_str, g_overlay_title);
+    if (std::strcmp(sig, last_layout_sig) == 0 &&
+        metrics_now_ns < next_forced_layout_ns) {
+      OnRender_orig(instance);
+      shellui_poll_cheat_progress();
+      shellui_poll_plugin_progress();
+      return;
+    }
+    std::memcpy(last_layout_sig, sig, sizeof(sig));
+    next_forced_layout_ns = metrics_now_ns + 5000000000ull;
+#endif
     layout_bar_labels(
         g_settings.overlay_fps ? fps_str : nullptr,
         (g_settings.overlay_cpu || g_settings.all_cpu_usage) ? cpu_temp

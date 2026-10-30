@@ -122,7 +122,7 @@ static bool onionhen_running() {
 }
 
 /* Longest this payload waits for OnionHEN's toolbox before injecting anyway. */
-static constexpr double kOnionHenWaitSec = 90.0;
+static constexpr double kOnionHenWaitSec = 5.0;
 
 /* Keeps the overlay injected into SceShellUI. Re-injects after a ShellUI
  * restart (new pid, e.g. Rest Mode resume). */
