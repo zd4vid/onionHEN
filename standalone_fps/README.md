@@ -24,6 +24,17 @@ disables the wait).
 
 All values, FPS included, refresh together every 750 ms.
 
+Running next to OnionHEN: the overlay signals its own ready marker
+(`fps_overlay_ui`), not OnionHEN's `toolbox` one, so OnionHEN still injects its
+toolbox into SceShellUI. While OnionHEN is running and its toolbox is not in
+SceShellUI yet, the payload waits (up to 90 s) instead of injecting, so the two
+injections never overlap; the log says `OnionHEN is running; waiting for its
+toolbox`. If OnionHEN's own FPS overlay is also enabled you will see two
+overlays; turn one of them off.
+
+This branch contains only what the standalone build compiles (`standalone_fps/`
+plus the `source/` libraries and the ShellUI module it reuses).
+
 Log: `/data/onion_fps.log` - look for `kstuff detected` (or the warning that it
 was not), then `injecting fps overlay` followed by `fps overlay ready`.
 

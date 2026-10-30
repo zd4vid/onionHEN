@@ -708,7 +708,13 @@ void setup_proc_hooks() {
 void run_keep_alive() {
   // Publish the initialized SceShellUI process instance.  The daemon keeps
   // this marker so a restart cannot inject a second Toolbox into the same PID.
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+  // The standalone overlay is not the toolbox: use its own marker so the
+  // OnionHEN daemon does not mistake it for an injected toolbox.
+  onion_ready_signal_pid(ONION_READY_FPS_OVERLAY, getpid());
+#else
   onion_ready_signal_pid(ONION_READY_TOOLBOX, getpid());
+#endif
 
   while (true) {
     LOG_DEBUG("sleeping ....");

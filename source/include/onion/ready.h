@@ -28,6 +28,10 @@ extern "C" {
 #define ONION_READY_KSTUFF "kstuff"
 #define ONION_READY_DAEMON "daemon"
 #define ONION_READY_TOOLBOX "toolbox"
+/* Marker of the standalone FPS overlay module inside SceShellUI. Deliberately
+ * not ONION_READY_TOOLBOX: the OnionHEN daemon treats that marker as "toolbox
+ * already injected" and would skip its own injection. */
+#define ONION_READY_FPS_OVERLAY "fps_overlay_ui"
 
 /*
  * Runtime flags (same storage as ready markers; typed names replace ad-hoc

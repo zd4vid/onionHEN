@@ -75,7 +75,7 @@ static bool shellui_ready_for_inject(pid_t pid) {
  * injection into the new ShellUI by ~45 s. */
 static bool wait_overlay_ready(pid_t pid, int timeout_ms) {
   for (int waited = 0; waited <= timeout_ms; waited += 250) {
-    if (onion_ready_matches_pid(ONION_READY_TOOLBOX, pid))
+    if (onion_ready_matches_pid(ONION_READY_FPS_OVERLAY, pid))
       return true;
     if (g_stack_shutting_down.load(std::memory_order_acquire))
       return false;
@@ -86,7 +86,7 @@ static bool wait_overlay_ready(pid_t pid, int timeout_ms) {
     }
     usleep(250 * 1000);
   }
-  return onion_ready_matches_pid(ONION_READY_TOOLBOX, pid);
+  return onion_ready_matches_pid(ONION_READY_FPS_OVERLAY, pid);
 }
 
 /* Seconds to wait before the first injection (default 5). OnionHEN spends
@@ -107,6 +107,23 @@ static unsigned initial_inject_delay_sec() {
   return delay;
 }
 
+/* ---- Running next to OnionHEN -----------------------------------------------
+ * Both this payload and OnionHEN's daemon inject a module into SceShellUI.
+ * They are kept apart in two ways:
+ *  - this overlay signals its own ready marker (ONION_READY_FPS_OVERLAY), never
+ *    the toolbox one, so OnionHEN's daemon does not think its toolbox is already
+ *    in SceShellUI and skips it;
+ *  - while OnionHEN is running and its toolbox is not in the current SceShellUI
+ *    yet, this payload waits instead of injecting, so the two ptrace injections
+ *    never overlap. */
+static bool onionhen_running() {
+  return onion_find_pid_substr("onion_daemon.elf") > 0 ||
+         onion_find_pid_substr("onion_util.elf") > 0;
+}
+
+/* Longest this payload waits for OnionHEN's toolbox before injecting anyway. */
+static constexpr double kOnionHenWaitSec = 90.0;
+
 /* Keeps the overlay injected into SceShellUI. Re-injects after a ShellUI
  * restart (new pid, e.g. Rest Mode resume). */
 static void *injector_thread(void *) {
@@ -122,7 +139,7 @@ static void *injector_thread(void *) {
   while (!g_stack_shutting_down.load(std::memory_order_acquire)) {
     const pid_t pid = onion_find_pid("SceShellUI");
     if (pid > 0 && pid != injected_pid &&
-        !onion_ready_matches_pid(ONION_READY_TOOLBOX, pid)) {
+        !onion_ready_matches_pid(ONION_READY_FPS_OVERLAY, pid)) {
       if (waiting_pid != pid) {
         waiting_pid = pid;
         wait_started = mono_sec();
@@ -134,6 +151,20 @@ static void *injector_thread(void *) {
           LOG_INFO("waiting for SceShellUI pid=%d NpTrophy modules (%.0fs)",
                    static_cast<int>(pid), now - wait_started);
           last_log = now;
+        }
+        sleep(1);
+        continue;
+      }
+      if (onionhen_running() &&
+          !onion_ready_matches_pid(ONION_READY_TOOLBOX, pid) &&
+          mono_sec() - wait_started < kOnionHenWaitSec) {
+        static double last_onion_log = 0.0;
+        const double now = mono_sec();
+        if (now - last_onion_log >= 10.0) {
+          LOG_INFO("OnionHEN is running; waiting for its toolbox in SceShellUI "
+                   "pid=%d before injecting (%.0fs)",
+                   static_cast<int>(pid), now - wait_started);
+          last_onion_log = now;
         }
         sleep(1);
         continue;
@@ -151,7 +182,7 @@ static void *injector_thread(void *) {
                   static_cast<int>(pid));
         sleep(10);
       }
-    } else if (pid > 0 && onion_ready_matches_pid(ONION_READY_TOOLBOX, pid)) {
+    } else if (pid > 0 && onion_ready_matches_pid(ONION_READY_FPS_OVERLAY, pid)) {
       injected_pid = pid;
     }
     sleep(3);
@@ -555,7 +586,7 @@ int main() {
    * pid (Rest Mode resume) is picked up and injected once. */
   {
     const pid_t shellui = onion_find_pid("SceShellUI");
-    if (shellui > 0 && onion_ready_matches_pid(ONION_READY_TOOLBOX, shellui))
+    if (shellui > 0 && onion_ready_matches_pid(ONION_READY_FPS_OVERLAY, shellui))
       LOG_WARN("SceShellUI pid=%d already has the overlay; skipping injection",
                static_cast<int>(shellui));
   }
