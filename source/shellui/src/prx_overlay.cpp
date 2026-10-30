@@ -304,7 +304,7 @@ void layout_bar_labels(const char *fps_str, const char *cpu_temp,
   };
   if (g_settings.overlay_ram)
     add_row("id_ram_label", "RAM: %s", ram_str);
-  if (g_settings.overlay_gpu)
+  if (g_settings.overlay_ram && g_settings.overlay_gpu)
     add_row("id_ram_value", "VRAM: %s", gpu_usage);
   if (g_settings.overlay_fan)
     add_row("id_fan_label", "FAN: %s", fan_str);
@@ -696,17 +696,36 @@ bool fps_no_game_running() {
   return fps_raw_sample(&local) && local.title_id[0] == '\0';
 }
 
-/* "Name / TITLEID" while a game runs; empty (row hidden) on the home screen. */
+/* "Name / TITLEID" while a game runs; empty (row hidden) on the home screen.
+ * The row must not blink: a failed read of the shared sample keeps what is
+ * shown, "no game" has to be seen on a few updates in a row before the row goes
+ * away, and a name that was known for a title is reused if a later sample
+ * arrives without it. */
 void update_overlay_title() {
+  static int empty_reads = 0;
+  static char name_tid[17] = {};
+  static char name_keep[65] = {};
+  constexpr int kEmptyReadsToHide = 3;
+
   OnionFpsSample local;
-  if (!fps_raw_sample(&local) || local.title_id[0] == '\0') {
-    g_overlay_title[0] = '\0';
+  if (!fps_raw_sample(&local))
+    return;
+  if (local.title_id[0] == '\0') {
+    if (++empty_reads >= kEmptyReadsToHide)
+      g_overlay_title[0] = '\0';
     return;
   }
+  empty_reads = 0;
   char tid[sizeof(local.title_id) + 1] = {};
   char name[sizeof(local.title_name) + 1] = {};
   std::memcpy(tid, local.title_id, sizeof(local.title_id));
   std::memcpy(name, local.title_name, sizeof(local.title_name));
+  if (name[0]) {
+    std::snprintf(name_tid, sizeof(name_tid), "%s", tid);
+    std::snprintf(name_keep, sizeof(name_keep), "%s", name);
+  } else if (std::strcmp(tid, name_tid) == 0) {
+    std::snprintf(name, sizeof(name), "%s", name_keep);
+  }
   if (name[0])
     std::snprintf(g_overlay_title, sizeof(g_overlay_title), "%s / %s", name, tid);
   else
@@ -883,7 +902,7 @@ void update_overlay_metrics(unsigned int idle_tid[kCpuCores], int& current_bank,
 
 #ifdef ONIONHEN_FPS_OVERLAY_ONLY
   note_home_state();
-  if (g_game_updates >= kGameScanUpdates)
+  if (g_settings.overlay_ram && g_game_updates >= kGameScanUpdates)
     dump_vm_debug();
 #endif
   sample_cpu_usage(idle_tid, current_bank, cpu_usage, cpu_usage_sz);
@@ -909,7 +928,8 @@ void update_overlay_metrics(unsigned int idle_tid[kCpuCores], int& current_bank,
     snprintf(gpu_temp, gpu_temp_sz, "%dC", soc_temp);
 #endif
 #ifdef ONIONHEN_FPS_OVERLAY_ONLY
-    get_mem_stats(kPageTableVram, VRAM);
+    if (g_settings.overlay_ram)
+      get_mem_stats(kPageTableVram, VRAM);
 #else
     Get_Page_Table_Stats(kVmSystem, kPageTableVram, &VRAM.Used, &VRAM.Free,
                          &VRAM.Total);

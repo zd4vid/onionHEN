@@ -779,7 +779,7 @@ int fps_overlay_only_main() {
   g_settings.overlay_fps = true;
   g_settings.overlay_cpu = true;
   g_settings.overlay_gpu = true;
-  g_settings.overlay_ram = true;
+  g_settings.overlay_ram = false; /* RAM/VRAM rows disabled for now */
   g_settings.overlay_ip = true;
   g_settings.overlay_fan = true;
   g_settings.all_cpu_usage = false;

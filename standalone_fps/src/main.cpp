@@ -392,6 +392,12 @@ static void *safe_sampler_thread(void *) {
   float good_fps = 0.f;
   double good_t = 0.0;
 
+  /* The name read from the app metadata can come back empty (files not there
+   * yet): retry for a while and reuse the last name known for the same title. */
+  std::string name_tid, name_keep;
+  int name_tries = 0;
+  double next_name_try = 0.0;
+
   int lost_passes = 0;
   int dce_fail_passes = 0;
   int reopens_this_title = 0;
@@ -476,6 +482,10 @@ static void *safe_sampler_thread(void *) {
     if (tid != cached_tid) {
       cached_tid = tid;
       g_title_name = resolve_title_name(tid);
+      if (g_title_name.empty() && tid == name_tid)
+        g_title_name = name_keep;
+      name_tries = 0;
+      next_name_try = now + 2.0;
       LOG_INFO("safe fps: game %s detected, title name '%s'", tid.c_str(),
                g_title_name.c_str());
       wn = wi = 0;
@@ -504,6 +514,19 @@ static void *safe_sampler_thread(void *) {
         wn = 1;
         LOG_INFO("safe fps: seeded with %.1f fps (%s)", seed, why);
       }
+    }
+
+    if (g_title_name.empty() && name_tries < 20 && now >= next_name_try) {
+      ++name_tries;
+      next_name_try = now + 2.0;
+      g_title_name = resolve_title_name(tid);
+      if (!g_title_name.empty())
+        LOG_INFO("safe fps: title name '%s' (try %d)", g_title_name.c_str(),
+                 name_tries);
+    }
+    if (!g_title_name.empty()) {
+      name_tid = tid;
+      name_keep = g_title_name;
     }
 
     if (!stall_logged && now - last_advance_t >= kStallLogSec) {

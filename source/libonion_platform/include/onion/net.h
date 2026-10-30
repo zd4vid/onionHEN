@@ -20,7 +20,7 @@ extern "C" {
 #define ONION_NET_IP_ADDRESS_SIZE 16
 
 /** Placeholder written when the address cannot be read. */
-#define ONION_NET_IP_UNKNOWN "IP NOT FOUND"
+#define ONION_NET_IP_UNKNOWN "--"
 
 typedef enum {
   ONION_NET_IP_OK = 0,

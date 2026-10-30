@@ -9,7 +9,7 @@
 static void write_placeholder(char *out, size_t out_size) {
   /*
    * The previous shellui/util copies did
-   *   memcpy(out, "IP NOT FOUND", sizeof(info.ip_address))
+   *   memcpy(out, "<placeholder>", sizeof(info.ip_address))
    * which reads 16 bytes out of a 13-byte string literal. Copy the literal's
    * real length instead.
    */
