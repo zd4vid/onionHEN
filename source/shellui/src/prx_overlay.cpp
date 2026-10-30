@@ -165,8 +165,8 @@ constexpr int kOverlayInitDelayFrames = 30;
 constexpr uint64_t kInitBackoffMinNs = 1000000000ull;  /* 1 s */
 constexpr uint64_t kInitBackoffMaxNs = 10000000000ull; /* 10 s */
 /* Every value (FPS, temps, RAM/VRAM, fan, CPU usage, IP) refreshes together every
- * 750 ms of wall time, independent of the frame rate. */
-constexpr uint64_t kOverlayUpdateIntervalNs = 750000000ull;
+ * 1 s of wall time, independent of the frame rate. */
+constexpr uint64_t kOverlayUpdateIntervalNs = 1000000000ull;
 #ifndef ONIONHEN_FPS_OVERLAY_ONLY
 constexpr int kFpsUpdateIntervalFrames = 2; /* full build: FPS refreshes faster */
 #endif
@@ -1070,9 +1070,34 @@ void OnRender_Hook(MonoObject* instance) {
   const uint64_t metrics_now_ns =
       static_cast<uint64_t>(metrics_ts.tv_sec) * 1000000000ull +
       static_cast<uint64_t>(metrics_ts.tv_nsec);
-  /* One tick every 750 ms drives every value, FPS included, so the rows change
+  /* One tick every second drives every value, FPS included, so the rows change
    * together. */
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+  /* Every value refreshes once a second, except that opening or quitting a game
+   * (or its name arriving) refreshes everything at once. The shared sample is
+   * checked every 100 ms for that. */
+  static uint64_t next_state_probe_ns = 0;
+  static char last_game[sizeof(OnionFpsSample::title_id) +
+                        sizeof(OnionFpsSample::title_name) + 1] = {};
+  bool game_changed = false;
+  if (metrics_now_ns >= next_state_probe_ns) {
+    next_state_probe_ns = metrics_now_ns + 100000000ull;
+    OnionFpsSample probe_sample{};
+    if (fps_raw_sample(&probe_sample)) {
+      char cur[sizeof(last_game)] = {};
+      std::memcpy(cur, probe_sample.title_id, sizeof(probe_sample.title_id));
+      std::memcpy(cur + sizeof(probe_sample.title_id), probe_sample.title_name,
+                  sizeof(probe_sample.title_name));
+      if (std::memcmp(cur, last_game, sizeof(cur)) != 0) {
+        std::memcpy(last_game, cur, sizeof(cur));
+        game_changed = true;
+      }
+    }
+  }
+  const bool tick = game_changed || metrics_now_ns >= next_update_ns;
+#else
   const bool tick = metrics_now_ns >= next_update_ns;
+#endif
   if (tick) {
     update_overlay_metrics(idle_thread_id, current_bank, cpu_temp,
                            sizeof(cpu_temp), cpu_usage, sizeof(cpu_usage),
@@ -1086,7 +1111,7 @@ void OnRender_Hook(MonoObject* instance) {
 #ifdef ONIONHEN_FPS_OVERLAY_ONLY
   /* Everything refreshes together on the tick, except that a "--" is replaced
    * as soon as a value exists (polled every 100 ms) so a game that just started
-   * does not show "--" until the next 750 ms tick. */
+   * does not show "--" until the next 1 s tick. */
   static uint64_t next_fps_probe_ns = 0;
   bool fps_arrived = false;
   if (!tick && g_settings.overlay_fps && fps_str[0] == '-' &&
