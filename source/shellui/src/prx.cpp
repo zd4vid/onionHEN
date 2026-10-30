@@ -735,11 +735,14 @@ namespace {
 /* Only the assemblies the overlay hook touches. Everything else load_shell_images()
  * requires (Legacy, ReactNative.*, CaptureMenu, ...) belongs to the toolbox and
  * must not be able to fail the overlay. */
+bool flag_file(const char *path) { return access(path, F_OK) == 0; }
+
 bool load_overlay_images(ShellImages& out) {
-  out.core = require_dll("Sce.PlayStation.Core.dll");
+  if (flag_file("/data/onion_fps_patch_main_check"))
+    out.core = require_dll("Sce.PlayStation.Core.dll");
   out.pui = require_dll("Sce.PlayStation.PUI.dll");
   out.app_system = require_dll(appsystem_dll.c_str());
-  if (!out.core || !out.pui || !out.app_system)
+  if (!out.pui || !out.app_system)
     return false;
 
   AppSystem_img = out.app_system;
@@ -756,36 +759,62 @@ void init_overlay_resource_names() {
   appsystem_dll = base64_decode("U2NlLlZzaC5TaGVsbFVJLkFwcFN5c3RlbS5kbGw=");
 }
 
+uint32_t g_scene_handle = 0;
+
+/* Re-resolves the SystemOverlay scene. The pointer is pinned with a GC handle
+ * so it cannot be moved or freed under us; callers compare Game before/after
+ * to notice that the shell replaced the scene. */
+}  // namespace
+
+bool overlay_refresh_scene(bool *changed) {
+  MonoObject *old = Game;
+  Game = nullptr;
+  if (!AppSystem_img &&
+      resolve_game_container(AppSystem_img, "SystemOverlay", false)) {
+    Game = nullptr;
+  }
+  if (changed)
+    *changed = (Game != old);
+  if (Game != old) {
+    if (g_scene_handle && mono_gchandle_free)
+      mono_gchandle_free(g_scene_handle);
+    g_scene_handle = Game ? mono_gchandle_new(Game, 1) : 0;
+  }
+  return Game != nullptr;
+}
+
+namespace {
+
 int fps_overlay_only_main() {
-  /* This module runs inside SceShellUI, a separate process from the payload, so
-   * it has its own log state. Append (O_APPEND) to the payload's log so scene
-   * probing results show up next to the payload lines. */
   onion_log_configure("FPS-UI", "/data/onion_fps.log");
   onion_log_set_level(ONION_LOG_INFO);
   LOG_INFO("overlay module starting in SceShellUI");
 
   const pid_t pid = getpid();
-  AuthIdGuard auth(pid, set_ucred_to_ptrace());
+  /* Default: elevate the process authid only while the detour is written.
+   * Holding it for the whole setup lets the shell's other threads run with the
+   * wrong authid. /data/onion_fps_wide_auth restores the old behaviour. */
+  const bool wide_auth = flag_file("/data/onion_fps_wide_auth");
+  AuthIdGuard wide(pid, wide_auth ? set_ucred_to_ptrace() : 0);
+  wide.active = wide_auth && wide.old_authid != 0;
 
   if (!resolve_native_symbols(pid) || !resolve_mono_symbols(pid))
     return -1;
 
   init_overlay_resource_names();
 
-  /* Fixed overlay config: text rows (FPS, CPU/GPU temps, RAM, VRAM, FAN, IP,
-   * game title), top-left, no background panel. Font size is fixed in overlay::effective_font_pt(). */
   g_settings.overlay_enabled = true;
   g_settings.overlay_background = false;
   g_settings.overlay_fps = true;
   g_settings.overlay_cpu = true;
   g_settings.overlay_gpu = true;
-  g_settings.overlay_ram = false; /* RAM/VRAM rows disabled for now */
+  g_settings.overlay_ram = false;
   g_settings.overlay_ip = true;
   g_settings.overlay_fan = true;
   g_settings.all_cpu_usage = false;
-  g_settings.overlay_pos = 0;   /* top edge */
-  g_settings.overlay_align = 0; /* left */
-  g_settings.overlay_font_size = onion::kOverlayFontLarge; /* unused: see above */
+  g_settings.overlay_pos = 0;
+  g_settings.overlay_align = 0;
+  g_settings.overlay_font_size = onion::kOverlayFontLarge;
 
   if (!mono_get_root_domain)
     return -1;
@@ -798,28 +827,42 @@ int fps_overlay_only_main() {
   if (!load_overlay_images(images))
     return -1;
 
-  /* "SystemOverlay" is drawn above both games and the home screen. */
-  if (!resolve_game_container(images.app_system, "SystemOverlay"))
-    return -1;
+  bool changed = false;
+  if (!overlay_refresh_scene(&changed))
+    LOG_WARN("SystemOverlay scene not found yet; the overlay will retry");
 
-  char probe[kMprotectProbeSize];
-  has_hv_bypass = (sceKernelMprotect(probe, sizeof(probe), kProtRwx) == 0);
-  Patch_Main_thread_Check(images.core);
+  /* Live-patching CheckRunningOnMainThread is not needed: every overlay call
+   * runs on the UI thread. Opt in with /data/onion_fps_patch_main_check. */
+  if (flag_file("/data/onion_fps_patch_main_check"))
+    Patch_Main_thread_Check(images.core);
 
   shellui_hooks_begin_install();
-  (void)install_mono_hook(
-      {"PUI.Application.Update", images.pui, "Sce.PlayStation.PUI",
-       "Application", "Update", 0, reinterpret_cast<void*>(&OnRender_Hook),
-       reinterpret_cast<void**>(&OnRender_orig), false});
+  {
+    const uint64_t addr = Get_Address_of_Method(
+        images.pui, "Sce.PlayStation.PUI", "Application", "Update", 0);
+    if (!addr) {
+      LOG_ERROR("fps overlay: Application.Update not found");
+      shellui_hooks_publish_failed();
+      return -1;
+    }
+    AuthIdGuard narrow(pid, wide_auth ? 0 : set_ucred_to_ptrace());
+    narrow.active = !wide_auth && narrow.old_authid != 0;
+    const bool ok =
+        InstallDetour(addr, reinterpret_cast<void *>(&OnRender_Hook),
+                      reinterpret_cast<void **>(&OnRender_orig));
+    if (!ok)
+      OnRender_orig = nullptr;
+  }
   if (!OnRender_orig) {
     LOG_ERROR("fps overlay: Application.Update hook failed");
     shellui_hooks_publish_failed();
     return -1;
   }
 
-  set_proc_authid(pid, auth.old_authid);
-  auth.release();
-  setup_proc_hooks();
+  if (wide.active) {
+    set_proc_authid(pid, wide.old_authid);
+    wide.release();
+  }
   shellui_hooks_publish_ready();
   hooked = true;
   run_keep_alive();

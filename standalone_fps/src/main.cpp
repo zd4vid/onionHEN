@@ -55,6 +55,11 @@ bool fps_kstuff_active(void);
 
 static double mono_sec();
 
+static bool flag_file(const char *path) { return access(path, F_OK) == 0; }
+/* Diagnostics for isolating crashes: /data/onion_fps_noinject = sampler only,
+ * /data/onion_fps_nodce = injection only (no /dev/dce reads). */
+static constexpr int kMaxInjectAttempts = 3;
+
 /* The full daemon never ELF-loads into SceShellUI until these modules are
  * mapped (same gate kstuff uses; see source/daemon/source/daemon_inject.cpp).
  * Cheap safety check; it passes immediately on a console that has been up. */
@@ -135,6 +140,8 @@ static void *injector_thread(void *) {
        ++i)
     sleep(1);
   pid_t waiting_pid = -1;
+  pid_t attempts_pid = -1;
+  int attempts = 0;
   double wait_started = 0.0;
   while (!g_stack_shutting_down.load(std::memory_order_acquire)) {
     const pid_t pid = onion_find_pid("SceShellUI");
@@ -171,16 +178,31 @@ static void *injector_thread(void *) {
       }
       LOG_INFO("SceShellUI pid=%d ready for inject after %.1fs",
                static_cast<int>(pid), mono_sec() - wait_started);
-      LOG_INFO("injecting fps overlay into SceShellUI pid=%d",
-               static_cast<int>(pid));
-      if (Inject_Toolbox(static_cast<int>(pid), fps_overlay_elf_start) &&
-          wait_overlay_ready(pid, 45000)) {
+      if (attempts_pid != pid) {
+        attempts_pid = pid;
+        attempts = 0;
+      }
+      if (attempts >= kMaxInjectAttempts) {
+        sleep(3);
+        continue; /* gave up on this SceShellUI; a new pid starts over */
+      }
+      ++attempts;
+      LOG_INFO("injecting fps overlay into SceShellUI pid=%d (attempt %d/%d)",
+               static_cast<int>(pid), attempts, kMaxInjectAttempts);
+      if (Inject_Toolbox(static_cast<int>(pid), fps_overlay_elf_start)) {
+        /* The module's thread is running now. Never inject a second copy into
+         * this process, even if it is slow to report ready. */
         injected_pid = pid;
-        LOG_INFO("fps overlay ready (pid=%d)", static_cast<int>(pid));
+        attempts = kMaxInjectAttempts;
+        if (wait_overlay_ready(pid, 45000))
+          LOG_INFO("fps overlay ready (pid=%d)", static_cast<int>(pid));
+        else
+          LOG_WARN("fps overlay not ready after 45 s (pid=%d); not re-injecting",
+                   static_cast<int>(pid));
       } else {
-        LOG_ERROR("fps overlay injection failed (pid=%d), retrying",
-                  static_cast<int>(pid));
-        sleep(10);
+        LOG_ERROR("fps overlay injection failed (pid=%d), attempt %d/%d",
+                  static_cast<int>(pid), attempts, kMaxInjectAttempts);
+        sleep(10u * static_cast<unsigned>(attempts));
       }
     } else if (pid > 0 && onion_ready_matches_pid(ONION_READY_FPS_OVERLAY, pid)) {
       injected_pid = pid;
@@ -406,6 +428,9 @@ static void *safe_sampler_thread(void *) {
   double detected_t = 0.0;
   bool first_value_pending = false;
 
+  const bool use_dce = !flag_file("/data/onion_fps_nodce");
+  if (!use_dce)
+    LOG_WARN("/data/onion_fps_nodce present: not reading /dev/dce");
   (void)onion::fps::publish_open();
   LOG_INFO("safe fps sampler started (scanout only)");
 
@@ -414,7 +439,7 @@ static void *safe_sampler_thread(void *) {
 
     /* 1. Scanout counter. */
     uint64_t count = 0;
-    if (dce->sample(&count)) {
+    if (use_dce && dce->sample(&count)) {
       dce_fail_passes = 0;
       if (have && count > last_count && now > last_t) {
         const double hz =
@@ -441,6 +466,8 @@ static void *safe_sampler_thread(void *) {
       last_count = count;
       last_t = now;
       have = true;
+    } else if (!use_dce) {
+      have = false;
     } else {
       have = false;
       ++dce_fail_passes;
@@ -616,9 +643,14 @@ int main() {
 
   pthread_t render_thr{}, inject_thr{};
   pthread_create(&render_thr, nullptr, safe_sampler_thread, nullptr);
-  pthread_create(&inject_thr, nullptr, injector_thread, nullptr);
+  const bool inject = !flag_file("/data/onion_fps_noinject");
+  if (inject)
+    pthread_create(&inject_thr, nullptr, injector_thread, nullptr);
+  else
+    LOG_WARN("/data/onion_fps_noinject present: sampler only, no injection");
 
   pthread_join(render_thr, nullptr);
-  pthread_join(inject_thr, nullptr);
+  if (inject)
+    pthread_join(inject_thr, nullptr);
   return 0;
 }

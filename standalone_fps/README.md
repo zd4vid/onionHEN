@@ -50,3 +50,12 @@ marker and the overlay removes all its widgets at once. If the payload is
 killed outright, the overlay notices that the heartbeat (the payload publishes
 several times a second) stopped for 1 s and removes its widgets too. Starting
 the payload again brings the overlay back without re-injecting.
+
+## Stability diagnostics (flag files in /data, no rebuild needed)
+
+- `onion_fps_noinject`: payload samples only, never injects (isolates injection).
+- `onion_fps_nodce`: payload injects but does not read /dev/dce (isolates the sampler).
+- `onion_fps_wide_auth`: old behaviour, SceShellUI's authid stays elevated for the whole overlay setup. Default is elevated only while the detour is written.
+- `onion_fps_patch_main_check`: also patches CheckRunningOnMainThread (off by default; the overlay only runs on the UI thread).
+
+The injector tries at most 3 times per SceShellUI pid and never injects a second copy after a successful injection.

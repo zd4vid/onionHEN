@@ -21,6 +21,7 @@ extern MonoObject* font;
 extern OverlayLayout g_overlay_layout;
 extern onion::Settings g_settings;
 #include "shellui_state.hpp"
+bool overlay_refresh_scene(bool *changed);
 void RemoveGameWidget(RemoveWidget widget);
 bool CreateGameWidget(CreateWidget widget);
 MonoObject* CreateLabel(const char* name, float x, float y, const char* text, MonoObject* fontObj, int horzAlign, int vertAlign, float r, float g, float b, float a);
@@ -159,7 +160,7 @@ void calc_usage(unsigned int idle_tid[8], thread_usages* cur, thread_usages* pre
 
 namespace {
 
-constexpr int kMaxProcThreads = 3072;
+[[maybe_unused]] constexpr int kMaxProcThreads = 3072;
 constexpr int kCpuCores = 8;
 constexpr int kOverlayInitDelayFrames = 30;
 constexpr uint64_t kInitBackoffMinNs = 1000000000ull;  /* 1 s */
@@ -171,7 +172,7 @@ constexpr uint64_t kOverlayUpdateIntervalNs = 1000000000ull;
 constexpr int kFpsUpdateIntervalFrames = 2; /* full build: FPS refreshes faster */
 #endif
 
-constexpr int kClockIdRealtime = 4;
+[[maybe_unused]] constexpr int kClockIdRealtime = 4;
 constexpr int kVmSystem = 1;
 constexpr int kPageTableRam = 1;
 constexpr int kPageTableVram = 2;
@@ -488,6 +489,7 @@ void layout_bar_labels(const char *fps_str, const char *cpu_temp,
 
 #endif /* ONIONHEN_FPS_OVERLAY_ONLY */
 
+#ifndef ONIONHEN_FPS_OVERLAY_ONLY
 void discover_idle_thread_ids(unsigned int idle_tid[kCpuCores]) {
   int count = kMaxProcThreads;
   if (sceKernelGetCpuUsage(reinterpret_cast<Proc_Stats*>(&Stat_Data), &count) ||
@@ -505,7 +507,14 @@ void discover_idle_thread_ids(unsigned int idle_tid[kCpuCores]) {
   }
 }
 
+#endif
+
 bool init_overlay_once(unsigned int idle_tid[kCpuCores]) {
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+  bool scene_changed = false;
+  if (!overlay_refresh_scene(&scene_changed))
+    return false;
+#endif
   rootWidget = Get_Property<MonoObject*>(pui_img, "Sce.PlayStation.PUI.UI2", "Scene",
                                          Game, "RootWidget");
   if (!rootWidget)
@@ -517,7 +526,9 @@ bool init_overlay_once(unsigned int idle_tid[kCpuCores]) {
     return false;
 
   apply_overlay_layout(screen_w, screen_h);
+#ifndef ONIONHEN_FPS_OVERLAY_ONLY
   discover_idle_thread_ids(idle_tid);
+#endif
   if (!g_settings.overlay_enabled)
     return true;
 
@@ -575,6 +586,7 @@ bool init_overlay_once(unsigned int idle_tid[kCpuCores]) {
   return true;
 }
 
+#ifndef ONIONHEN_FPS_OVERLAY_ONLY
 /** Sample CPU into Usage[]; formats CPU_USAGE. Returns false if sampling skipped/failed. */
 bool sample_cpu_usage(unsigned int idle_tid[kCpuCores], int& current_bank,
                       char* cpu_usage, size_t cpu_usage_sz) {
@@ -621,6 +633,7 @@ bool sample_cpu_usage(unsigned int idle_tid[kCpuCores], int& current_bank,
   snprintf(cpu_usage, cpu_usage_sz, "--%%");
   return false;
 }
+#endif
 
 #ifdef ONIONHEN_FPS_OVERLAY_ONLY
 /* False once the payload has exited (clean shutdown marker) or stopped
@@ -907,7 +920,9 @@ void update_overlay_metrics(unsigned int idle_tid[kCpuCores], int& current_bank,
   if (g_settings.overlay_ram && g_game_updates >= kGameScanUpdates)
     dump_vm_debug();
 #endif
+#ifndef ONIONHEN_FPS_OVERLAY_ONLY /* usage is never shown in the standalone rows */
   sample_cpu_usage(idle_tid, current_bank, cpu_usage, cpu_usage_sz);
+#endif
 
   if (g_settings.overlay_ram) {
 #ifdef ONIONHEN_FPS_OVERLAY_ONLY
@@ -1020,7 +1035,9 @@ void OnRender_Hook(MonoObject* instance) {
   /* Payload gone (exited or killed): take the overlay down and stay idle. */
   if (!fps_payload_alive()) {
     if (inited) {
-      RemoveGameWidget(REMOVE_ALL_OVERLAYS);
+      bool scene_changed = false;
+      if (overlay_refresh_scene(&scene_changed) && !scene_changed)
+        RemoveGameWidget(REMOVE_ALL_OVERLAYS);
       inited = false;
       frames_until_init = kOverlayInitDelayFrames;
       next_update_ns = 0;
@@ -1097,6 +1114,24 @@ void OnRender_Hook(MonoObject* instance) {
   const bool tick = game_changed || metrics_now_ns >= next_update_ns;
 #else
   const bool tick = metrics_now_ns >= next_update_ns;
+#endif
+#ifdef ONIONHEN_FPS_OVERLAY_ONLY
+  /* The shell can replace or free the SystemOverlay scene; never trust a
+   * pointer cached across ticks. */
+  if (tick) {
+    bool scene_changed = false;
+    const bool have_scene = overlay_refresh_scene(&scene_changed);
+    if (!have_scene || (scene_changed && inited)) {
+      inited = false; /* widgets died with the old scene */
+      frames_until_init = kOverlayInitDelayFrames;
+      next_init_try_ns = 0;
+      init_backoff_ns = kInitBackoffMinNs;
+      last_layout_sig[0] = '\0';
+      next_update_ns = 0;
+      OnRender_orig(instance);
+      return;
+    }
+  }
 #endif
   if (tick) {
     update_overlay_metrics(idle_thread_id, current_bank, cpu_temp,
