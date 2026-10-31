@@ -947,17 +947,16 @@ void update_overlay_metrics(unsigned int idle_tid[kCpuCores], int& current_bank,
   }
 
   if (g_settings.overlay_ip) {
-    /* A network-stack query on the UI thread: once every 10 s is plenty (every
-     * 2 s until an address has been obtained). */
+    /* Network-info query on the UI thread, once per second like the other
+     * values. */
     static uint64_t next_ip_ns = 0;
     struct timespec ip_ts {};
     clock_gettime(CLOCK_MONOTONIC, &ip_ts);
     const uint64_t ip_now_ns = static_cast<uint64_t>(ip_ts.tv_sec) * 1000000000ull +
                                static_cast<uint64_t>(ip_ts.tv_nsec);
     if (ip_now_ns >= next_ip_ns) {
-      const bool got = onion_net_get_ip_address(ip_address, ip_sz) ==
-                       ONION_NET_IP_OK;
-      next_ip_ns = ip_now_ns + (got ? 10000000000ull : 2000000000ull);
+      (void)onion_net_get_ip_address(ip_address, ip_sz);
+      next_ip_ns = ip_now_ns + 1000000000ull;
     }
   }
 

@@ -22,7 +22,7 @@ SceShellUI already has the overlay, and waits 5 s before the first injection
 (change it by writing a number of seconds to `/data/onion_fps_delay`; 0
 disables the wait).
 
-All values, FPS included, refresh together every second, and immediately when
+All values, FPS and IP included, refresh together every second, and immediately when
 a game opens or quits.
 
 Running next to OnionHEN: the overlay signals its own ready marker
