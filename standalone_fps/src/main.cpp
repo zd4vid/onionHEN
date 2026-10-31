@@ -30,6 +30,7 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/syscall.h>
 #include <unistd.h>
 
 #include <ps5/kernel.h>
@@ -576,7 +577,15 @@ static void detach_from_loader(void) {
     close(fd);
 }
 
+/* The loader names a process "payload.elf" unless told otherwise (it calls
+ * thr_set_name on the main thread). Do the same with our own name so the
+ * process list shows "overlay.elf". */
+static void set_process_name(const char *name) {
+  (void)syscall(SYS_thr_set_name, -1L, name);
+}
+
 int main() {
+  set_process_name("overlay.elf");
   detach_from_loader();
   mkdir(ONION_SYSTEM_TMP_ROOT, 0777);
   onion_log_configure("FPS", "/data/onion_fps.log");

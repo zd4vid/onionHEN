@@ -130,11 +130,7 @@ extern MonoMethod* set_value_method;
 extern MonoImage * react_common_img;
 
 /* =============================== mono utils =============================================================================*/
-std::string Mono_to_String(MonoString* str);
-std::string GetPropertyValue(MonoObject* element, const char* propertyName);
 std::string base64_decode(const std::string &encoded_string);
-std::vector<unsigned char> encrypt_decrypt(const unsigned char *data, size_t size, const std::string &key);
-void ReloadRNPSApp(const char* title_id);
 
 void generate_payload_xml(std::string& xml_buffer);
 void generate_payload_config_xml(std::string& xml_buffer,
@@ -163,7 +159,6 @@ void apply_overlay_layout(float screen_w, float screen_h);
 /** Read both logical canvas dimensions from a ShellUI RootWidget. */
 bool resolve_root_dimensions(MonoObject *root, float *screen_w, float *screen_h);
 /** Persist g_settings and optionally reload daemon/util settings via IPC. */
-void settings_commit(bool reload_main = false, bool reload_util = false);
 
 /**
  * Queue one NPXS40002 ReloadApp for the next OnRender. Display-TID spoof and
@@ -172,9 +167,7 @@ void settings_commit(bool reload_main = false, bool reload_util = false);
  * inject worker. Not timed — readiness is hooks-ready + UI thread, not
  * onion_ready files (those are daemon/process handshake only).
  */
-void shellui_request_home_reload(void);
 /** Drain the one-shot Home reload; call only from UI thread after hooks ready. */
-void shellui_poll_home_reload(void);
 
 /** UI-thread ticker for the cheat-download XML progress page. */
 void shellui_poll_cheat_progress(void);
