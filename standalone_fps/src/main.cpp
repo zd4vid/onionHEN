@@ -233,6 +233,7 @@ static void *injector_thread(void *) {
       ++attempts;
       LOG_INFO("injecting fps overlay into SceShellUI pid=%d (attempt %d/%d)",
                static_cast<int>(pid), attempts, kMaxInjectAttempts);
+      onion_ready_clear("fps_overlay_stage");
       if (Inject_Toolbox(static_cast<int>(pid), fps_overlay_elf_start)) {
         /* The module's thread is running now. Never inject a second copy into
          * this process, even if it is slow to report ready. */
@@ -242,8 +243,14 @@ static void *injector_thread(void *) {
         if (wait_overlay_ready(pid, 45000))
           LOG_INFO("fps overlay ready (pid=%d)", static_cast<int>(pid));
         else
-          LOG_WARN("fps overlay not ready after 45 s (pid=%d); not re-injecting",
-                   static_cast<int>(pid));
+        {
+          pid_t st = 0;
+          onion_ready_read_pid("fps_overlay_stage", &st);
+          LOG_WARN("fps overlay not ready after 45 s (pid=%d, last module stage "
+                   "%d: 1 start, 2 symbols, 3 mono attached, 4 images, 5 scene, "
+                   "6 hooking, 7 hooked); not re-injecting",
+                   static_cast<int>(pid), static_cast<int>(st));
+        }
       } else {
         LOG_ERROR("fps overlay injection failed (pid=%d), attempt %d/%d",
                   static_cast<int>(pid), attempts, kMaxInjectAttempts);

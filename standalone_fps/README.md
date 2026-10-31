@@ -55,7 +55,7 @@ the payload again brings the overlay back without re-injecting.
 
 - `onion_fps_noinject`: payload samples only, never injects (isolates injection).
 - `onion_fps_nodce`: payload injects but does not read /dev/dce (isolates the sampler).
-- `onion_fps_wide_auth`: old behaviour, SceShellUI's authid stays elevated for the whole overlay setup. Default is elevated only while the detour is written.
+- `onion_fps_narrow_auth`: elevate the authid only while the detour is written (untested). Default keeps it elevated for the whole setup, the behaviour known to work.
 - `onion_fps_patch_main_check`: also patches CheckRunningOnMainThread (off by default; the overlay only runs on the UI thread).
 
 The injector tries at most 3 times per SceShellUI pid and never injects a second copy after a successful injection.

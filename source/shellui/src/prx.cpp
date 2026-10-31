@@ -735,6 +735,10 @@ namespace {
 /* Only the assemblies the overlay hook touches. Everything else load_shell_images()
  * requires (Legacy, ReactNative.*, CaptureMenu, ...) belongs to the toolbox and
  * must not be able to fail the overlay. */
+/* Progress marker readable by the payload (the module log never reaches the
+ * file from inside SceShellUI). */
+void stage(int n) { onion_ready_signal_pid("fps_overlay_stage", static_cast<pid_t>(n)); }
+
 bool flag_file(const char *path) { return access(path, F_OK) == 0; }
 
 bool load_overlay_images(ShellImages& out) {
@@ -789,17 +793,19 @@ int fps_overlay_only_main() {
   onion_log_configure("FPS-UI", "/data/onion_fps.log");
   onion_log_set_level(ONION_LOG_INFO);
   LOG_INFO("overlay module starting in SceShellUI");
+  stage(1);
 
   const pid_t pid = getpid();
   /* Default: elevate the process authid only while the detour is written.
    * Holding it for the whole setup lets the shell's other threads run with the
-   * wrong authid. /data/onion_fps_wide_auth restores the old behaviour. */
-  const bool wide_auth = flag_file("/data/onion_fps_wide_auth");
+   * wrong authid, but it is the behaviour known to work. /data/onion_fps_narrow_auth opts in (untested on hardware). */
+  const bool wide_auth = !flag_file("/data/onion_fps_narrow_auth");
   AuthIdGuard wide(pid, wide_auth ? set_ucred_to_ptrace() : 0);
   wide.active = wide_auth && wide.old_authid != 0;
 
   if (!resolve_native_symbols(pid) || !resolve_mono_symbols(pid))
     return -1;
+  stage(2);
 
   init_overlay_resource_names();
 
@@ -822,15 +828,18 @@ int fps_overlay_only_main() {
   if (!Root_Domain)
     return -1;
   mono_thread_attach(Root_Domain);
+  stage(3);
 
   ShellImages images;
   if (!load_overlay_images(images))
     return -1;
+  stage(4);
 
   bool changed = false;
   if (!overlay_refresh_scene(&changed))
     LOG_WARN("SystemOverlay scene not found yet; the overlay will retry");
 
+  stage(5);
   /* Live-patching CheckRunningOnMainThread is not needed: every overlay call
    * runs on the UI thread. Opt in with /data/onion_fps_patch_main_check. */
   if (flag_file("/data/onion_fps_patch_main_check"))
@@ -845,6 +854,7 @@ int fps_overlay_only_main() {
       shellui_hooks_publish_failed();
       return -1;
     }
+    stage(6);
     AuthIdGuard narrow(pid, wide_auth ? 0 : set_ucred_to_ptrace());
     narrow.active = !wide_auth && narrow.old_authid != 0;
     const bool ok =
@@ -859,6 +869,7 @@ int fps_overlay_only_main() {
     return -1;
   }
 
+  stage(7);
   if (wide.active) {
     set_proc_authid(pid, wide.old_authid);
     wide.release();
