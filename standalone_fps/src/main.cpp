@@ -89,14 +89,14 @@ static bool wait_overlay_ready(pid_t pid, int timeout_ms) {
   return onion_ready_matches_pid(ONION_READY_FPS_OVERLAY, pid);
 }
 
-/* Seconds to wait before the first injection (default 5). OnionHEN spends
+/* Seconds to wait before the first injection (default 2). OnionHEN spends
  * 20+ s starting its services before its daemon touches SceShellUI; injecting within a few
  * milliseconds of being loaded from the on-console payload manager (a web page
  * that is still busy handing the payload over) hung the browser until the
  * system raised an error. Override with a plain number in
  * /data/onion_fps_delay (0 disables the wait). */
 static unsigned initial_inject_delay_sec() {
-  unsigned delay = 5;
+  unsigned delay = 2;
   FILE *f = std::fopen("/data/onion_fps_delay", "r");
   if (f) {
     unsigned v = 0;
@@ -124,6 +124,36 @@ static bool onionhen_running() {
 /* Longest this payload waits for OnionHEN's toolbox before injecting anyway. */
 static constexpr double kOnionHenWaitSec = 5.0;
 
+/* kstuff gate. The payload can be loaded before kstuff.elf finishes patching
+ * the kernel (the process list shows kstuff started after this payload).
+ * Touching /dev/dce or ptrace-injecting while the kernel is mid-patch is the
+ * most dangerous thing this payload does, and without kstuff the detour code
+ * falls back to kernel_mprotect (a kernel vm-map write). So both threads wait
+ * for the userland mprotect(RWX) probe to pass, and give up (no injection, no
+ * sampling) after kKstuffWaitSec. Create /data/onion_fps_allow_no_kstuff to
+ * skip the gate. */
+static constexpr unsigned kKstuffWaitSec = 90;
+
+static bool wait_for_kstuff(const char *who) {
+  if (access("/data/onion_fps_allow_no_kstuff", F_OK) == 0)
+    return true;
+  for (unsigned i = 0; i <= kKstuffWaitSec; ++i) {
+    if (fps_kstuff_active()) {
+      if (i)
+        LOG_INFO("%s: kstuff active after %us", who, i);
+      return true;
+    }
+    if (g_stack_shutting_down.load(std::memory_order_acquire))
+      return false;
+    if (i == 0)
+      LOG_INFO("%s: waiting for kstuff (up to %us)", who, kKstuffWaitSec);
+    sleep(1);
+  }
+  LOG_ERROR("%s: kstuff never became active; not touching the kernel/ShellUI",
+            who);
+  return false;
+}
+
 /* Keeps the overlay injected into SceShellUI. Re-injects after a ShellUI
  * restart (new pid, e.g. Rest Mode resume). */
 static void *injector_thread(void *) {
@@ -134,6 +164,8 @@ static void *injector_thread(void *) {
        i < initial_delay && !g_stack_shutting_down.load(std::memory_order_acquire);
        ++i)
     sleep(1);
+  if (!wait_for_kstuff("injector"))
+    return nullptr;
   pid_t waiting_pid = -1;
   double wait_started = 0.0;
   while (!g_stack_shutting_down.load(std::memory_order_acquire)) {
@@ -383,6 +415,8 @@ static constexpr double kHoldSameTitleSec = 7200.0;
 static constexpr double kStallLogSec = 10.0;
 
 static void *safe_sampler_thread(void *) {
+  if (!wait_for_kstuff("sampler"))
+    return nullptr;
   std::unique_ptr<onion::fps::DceSource> dce(new onion::fps::DceSource());
   std::string cached_tid;
   bool have = false;
@@ -611,7 +645,7 @@ int main() {
   if (fps_kstuff_active())
     LOG_INFO("kstuff detected");
   else
-    LOG_WARN("kstuff not detected; injecting anyway (kernel mprotect fallback)");
+    LOG_WARN("kstuff not active yet; sampler and injector wait for it");
 
   /* Preflight 2: never inject twice. A live overlay is marked ready for the
    * current SceShellUI pid; the injector thread skips it, and a new ShellUI
