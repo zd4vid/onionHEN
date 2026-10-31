@@ -173,14 +173,23 @@ static void *injector_thread(void *) {
                static_cast<int>(pid), mono_sec() - wait_started);
       LOG_INFO("injecting fps overlay into SceShellUI pid=%d",
                static_cast<int>(pid));
-      if (Inject_Toolbox(static_cast<int>(pid), fps_overlay_elf_start) &&
-          wait_overlay_ready(pid, 45000)) {
-        injected_pid = pid;
+      /* Exactly one injection attempt per SceShellUI pid. A second ptrace
+       * injection into a process that already runs the overlay (or a
+       * half-injected one) freezes the console, and the ready marker is not
+       * reliable enough to tell the two apart, so a missing marker or a failed
+       * call is logged but never retried for the same pid. A new ShellUI pid
+       * (Rest Mode resume) gets its own single attempt. */
+      injected_pid = pid;
+      const bool injected =
+          Inject_Toolbox(static_cast<int>(pid), fps_overlay_elf_start);
+      if (!injected) {
+        LOG_ERROR("fps overlay injection failed (pid=%d); not retrying",
+                  static_cast<int>(pid));
+      } else if (wait_overlay_ready(pid, 45000)) {
         LOG_INFO("fps overlay ready (pid=%d)", static_cast<int>(pid));
       } else {
-        LOG_ERROR("fps overlay injection failed (pid=%d), retrying",
-                  static_cast<int>(pid));
-        sleep(10);
+        LOG_WARN("fps overlay not confirmed ready (pid=%d); not re-injecting",
+                 static_cast<int>(pid));
       }
     } else if (pid > 0 && onion_ready_matches_pid(ONION_READY_FPS_OVERLAY, pid)) {
       injected_pid = pid;
