@@ -44,6 +44,26 @@ else()
 	target_link_options(${PROJECT_NAME} PRIVATE "-Wl,--icf=safe")
 endif()
 
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+
+set(I18N_DIR "${D_CWD}/../i18n")
+set(I18N_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+set(I18N_CATALOG "${I18N_GENERATED_DIR}/toolbox_i18n_catalog.inc")
+file(GLOB I18N_LOCALE_JSON CONFIGURE_DEPENDS "${I18N_DIR}/*.json")
+add_custom_command(
+	OUTPUT "${I18N_CATALOG}"
+	COMMAND "${Python3_EXECUTABLE}" "${I18N_DIR}/generate_catalog.py"
+		--locales-dir "${I18N_DIR}"
+		--catalog toolbox
+		--output "${I18N_CATALOG}"
+	DEPENDS
+		"${I18N_DIR}/generate_catalog.py"
+		${I18N_LOCALE_JSON}
+	COMMENT "Generating toolbox i18n catalog"
+	VERBATIM
+)
+add_custom_target(shellui_i18n_catalog DEPENDS "${I18N_CATALOG}")
+
 set(SrcFiles
 	${D_SRC}/prx.cpp
 	${D_SRC}/prx_overlay.cpp
@@ -55,6 +75,7 @@ set(SrcFiles
 	${D_SRC}/hook_lifecycle.cpp
 	${D_SRC}/external_symbols.cpp
 	${D_SRC}/hook_functions.cpp
+	${D_SRC}/prx_install.cpp
 	${D_SRC}/shellui_notify.cpp
 )
 
@@ -65,10 +86,11 @@ set(CMAKE_C_FLAGS_RELEASE "-Os -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-Os -DNDEBUG")
 
 target_sources(${PROJECT_NAME} PRIVATE ${SrcFiles})
-add_dependencies(${PROJECT_NAME} onion_version onion_detour onion_proc onion_platform onion_ready)
+add_dependencies(${PROJECT_NAME} shellui_i18n_catalog onion_version onion_detour onion_proc onion_platform onion_ready)
 onion_target_debug_define(${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME} PRIVATE
 	"${D_CWD}/include"
+	"${I18N_GENERATED_DIR}"
 	"${ONIONHEN_THIRD_PARTY_DIR}/cjson"
 	"${ONIONHEN_THIRD_PARTY_DIR}/sha1"
 	"${PROJECT_ROOT}/libonion_ipc/include"

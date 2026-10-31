@@ -13,6 +13,12 @@
 #include <mutex>
 #include <unistd.h>
 
+namespace {
+
+std::atomic<bool> g_home_reload_pending{false};
+
+} // namespace
+
 MonoImage * getDLLimage(const char* dll_file){
   
   std::string dll_path = "/system_ex/common_ex/lib/" + std::string(dll_file);
@@ -149,6 +155,97 @@ uint64_t Get_Address_of_Method(MonoImage* Assembly_Image, MonoClass* klass, cons
   return mono_compile_method(Method);
 }
 
+MonoObject *Get_Instance(MonoClass *klass, const char *Instance)
+{
+
+  MonoProperty *inst_prop = mono_class_get_property_from_name(klass, Instance);
+  if (!inst_prop)
+  {
+#if SHELL_DEBUG == 1
+    LOG_ERROR("Failed to find Instance property \"%s\" in Class \"%s\".", Instance, klass->name);
+#endif
+    return nullptr;
+  }
+
+  MonoMethod *inst_get_method = mono_property_get_get_method(inst_prop);
+  if (!inst_get_method)
+  {
+#if SHELL_DEBUG == 1
+    LOG_ERROR("Failed to find get method for \"%s\" in Class \"%s\".", Instance, klass->name);
+#endif
+    return nullptr;
+  }
+
+  MonoObject *inst = mono_runtime_invoke(inst_get_method, 0, 0, 0);
+  if (!inst)
+  {
+#if SHELL_DEBUG == 1
+    LOG_ERROR("Failed to find get Instance \"%s\" in Class \"%s\".", Instance, klass->name);
+#endif
+    return nullptr;
+  }
+
+  return inst;
+}
+
+std::string Mono_to_String(MonoString *str)
+{
+  if (!str)
+  {
+    return "";
+  }
+
+  if (!mono_string_to_utf8)
+    return "";
+
+  const char *c_str = mono_string_to_utf8(str);
+  if (!c_str)
+    return "";
+
+  std::string ret(c_str);
+  if (mono_free)
+    mono_free((void *)c_str);
+  return ret;
+}
+
+std::string GetPropertyValue(MonoObject *element, const char *propertyName)
+{
+  std::string ret_val;
+  MonoClass *elementClass = element->vtable->klass;
+  MonoProperty *property = mono_class_get_property_from_name(elementClass, propertyName);
+  if (!property)
+  {
+    //  LOG_ERROR("[LM HOOK] OnPress_Hook: Property %s not found", propertyName);
+    return std::string();
+  }
+
+  MonoMethod *getter = mono_property_get_get_method(property);
+  if (!getter)
+  {
+    // LOG_ERROR("[LM HOOK] OnPress_Hook: Getter for property %s not found", propertyName);
+    return std::string();
+  }
+
+  MonoObject *result = mono_runtime_invoke(getter, element, nullptr, nullptr);
+  if (!result)
+  {
+    // LOG_DEBUG("[LM HOOK] OnPress_Hook: Getter for property %s returned nullptr", propertyName);
+    return std::string();
+  }
+  return Mono_to_String((MonoString *)result);
+}
+
+MonoObject *InvokeByDesc(MonoClass *p_Class, const char *p_MethodDesc, void *p_Instance, void *p_Args)
+{
+  MonoMethodDesc *s_MethodDesc = mono_method_desc_new(p_MethodDesc, 1);
+  auto s_ClassMethod = mono_method_desc_search_in_class(s_MethodDesc, p_Class);
+  mono_method_desc_free(s_MethodDesc);
+  if (s_ClassMethod == nullptr)
+    return nullptr;
+
+  return mono_runtime_invoke(s_ClassMethod, p_Instance, (void **)p_Args, nullptr);
+}
+
 /* Keep a few recent streams rooted because Settings can consume returned
  * streams after rapid resource re-entry. Old slots are released on reuse. */
 static std::mutex g_xml_stream_gchandle_lock;
@@ -232,3 +329,81 @@ MonoObject *New_Mono_XML_From_String(std::string xml_doc, MonoDomain *domain)
   return stream;
 }
 
+bool SetVersionString(const char *str)
+{
+  MonoAssembly *Assembly = mono_domain_assembly_open(Root_Domain, uilib_dll.c_str());
+  if (!Assembly)
+  {
+#if SHELL_DEBUG == 1
+    LOG_ERROR("SetVersionString: Failed to open assembly.");
+#endif
+    return false;
+  }
+  MonoClass *SystemSoftwareVersionInfo = mono_class_from_name(mono_assembly_get_image(Assembly), uilib.c_str(), Sysinfo.c_str());
+  if (!SystemSoftwareVersionInfo)
+  {
+#if SHELL_DEBUG == 1
+    LOG_ERROR("SetVersionString: Failed to open class.");
+#endif
+    return false;
+  }
+
+  MonoObject *SystemSoftwareVersionInfo_Instance = Get_Instance(SystemSoftwareVersionInfo, "Instance");
+  if (!SystemSoftwareVersionInfo_Instance)
+  {
+#if SHELL_DEBUG == 1
+    LOG_ERROR("SetVersionString: Failed to open Instance.");
+#endif
+    return false;
+  }
+
+  MonoMethod *Set_Method = mono_class_get_method_from_name(SystemSoftwareVersionInfo, display_info.c_str(), 1);
+  if (Set_Method == nullptr)
+  {
+#if SHELL_DEBUG == 1
+    LOG_DEBUG("SetVersionString: Could not find set method.");
+#endif
+    return false;
+  }
+
+  MonoObject *exception = nullptr;
+  void *args[] = {mono_string_new(Root_Domain, str)};
+  //    MonoObject* result = mono_runtime_invoke(send_by_id_method, nullptr, args, &exception);
+  mono_runtime_invoke(Set_Method, SystemSoftwareVersionInfo_Instance, args, &exception);
+  if (exception)
+  {
+    MonoString *exc_string = mono_object_to_string(exception, nullptr);
+    const char *exc_chars = mono_string_to_utf8(exc_string);
+#if SHELL_DEBUG == 1
+    LOG_DEBUG("Exception: %s", exc_chars);
+#endif
+    mono_free((void *)exc_chars);
+    return false;
+  }
+  return true;
+}
+
+void ReloadRNPSApp(const char* title_id){
+    void (*ReloadApp)(MonoString* tid) = (void(*)(MonoString*))Get_Address_of_Method(react_common_img, "ReactNative.Vsh.Common", "ReactApplicationSceneManager", "ReloadApp", 1);
+    if (ReloadApp) {
+        LOG_DEBUG("Reloading %s scenes", title_id);
+        ReloadApp(mono_string_new(Root_Domain, title_id));
+    } else {
+        LOG_ERROR("Failed to find reload method, not reloading scene");
+    }
+}
+
+void shellui_request_home_reload(void) {
+  if (g_home_reload_pending.exchange(true, std::memory_order_acq_rel)) {
+    return;
+  }
+  LOG_DEBUG("queued NPXS40002 home reload for next UI tick");
+}
+
+void shellui_poll_home_reload(void) {
+  if (!g_home_reload_pending.exchange(false, std::memory_order_acq_rel)) {
+    return;
+  }
+  LOG_DEBUG("applying NPXS40002 home reload on UI thread");
+  ReloadRNPSApp("NPXS40002");
+}
