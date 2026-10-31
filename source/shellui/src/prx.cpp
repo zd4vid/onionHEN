@@ -101,13 +101,9 @@ namespace {
 constexpr int kSyscallInstrOffset = 0x0A;
 constexpr size_t kMprotectProbeSize = 100;
 constexpr int kProtRwx = 0x7; // PROT_READ | PROT_WRITE | PROT_EXEC
-constexpr uint32_t kFw3xxMaxExclusive = 0x4000042;
-constexpr uint32_t kFw6xxMin = 0x6000000;
 // Same magnitude as the previous sleep(0x100000) keep-alive.
 constexpr unsigned kKeepAliveSleepSec = 0x100000;
 
-// XOR key material used for version string + toolbox XML (base64 of "SISTR0_I_SEE_YOU").
-constexpr const char* kXorKeyB64 = "U0lTVFIwX0lfU0VFX1lPVQ==";
 
 // ---------------------------------------------------------------------------
 // RAII: restore process authid on every exit path
@@ -132,33 +128,6 @@ struct AuthIdGuard {
 // ---------------------------------------------------------------------------
 // Detour helpers
 // ---------------------------------------------------------------------------
-
-template <typename Fn>
-bool install_detour(const char* name, uint64_t target, void* hook, Fn& out_orig,
-                    bool required) {
-  if (!target) {
-    LOG_ERROR("Hook target missing: %s", name);
-    if (required)
-      notify("notify.hook.target");
-    return !required;
-  }
-
-  if (!InstallDetour(target, hook, reinterpret_cast<void**>(&out_orig))) {
-    LOG_ERROR("Detour failed: %s", name);
-    if (required)
-      notify("notify.hook.install");
-    return !required;
-  }
-
-  return true;
-}
-
-template <typename Fn>
-bool install_detour_native(const char* name, void* target, void* hook, Fn& out_orig,
-                           bool required) {
-  return install_detour(name, reinterpret_cast<uint64_t>(target), hook, out_orig,
-                       required);
-}
 
 // ---------------------------------------------------------------------------
 // Mono images used during init
@@ -336,98 +305,8 @@ bool resolve_mono_symbols(pid_t pid) {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 3: resource / type name strings (kept as base64 at rest)
-// ---------------------------------------------------------------------------
-
-void init_resource_names() {
-  // Manifest resource paths (used by GetManifestResourceStream hook)
-  payloads_xml = base64_decode(
-      "U2NlLlZzaC5TaGVsbFVJLkxlZ2FjeS5zcmMuU2NlLlZzaC5Ta"
-      "GVsbFVJLlNldHRpbmdzLlBsdWdpbnMucGF5bG9hZHMueG1s");
-  cheats_xml = base64_decode(
-      "U2NlLlZzaC5TaGVsbFVJLkxlZ2FjeS5zcmMuU2NlLlZzaC5Ta"
-      "GVsbFVJLlNldHRpbmdzLlBsdWdpbnMuY2hlYXRzLnhtbA==");
-  debug_settings_xml = base64_decode(
-      "U2NlLlZzaC5TaGVsbFVJLkxlZ2FjeS5zcmMuU2NlLlZzaC5TaGVsbFVJLlNldHRpbmdzLlBs"
-      "dWdpbnMuRGVidWdTZXR0aW5ncy5kYXRhLmRlYnVnX3NldHRpbmdzLnhtbA==");
-
-  // Assembly / type names used across hooks
-  legacy_dec = base64_decode("U2NlLlZzaC5TaGVsbFVJLkxlZ2FjeS5kbGw="); // Legacy.dll
-  UI3_dec = base64_decode("U2NlLlZzaC5TaGVsbFVJLlNldHRpbmdzLkNvcmVVSTM="); // Settings.CoreUI3
-  appsystem_dll = base64_decode("U2NlLlZzaC5TaGVsbFVJLkFwcFN5c3RlbS5kbGw=");
-  uilib = base64_decode("U2NlLlZzaC5VSUxpYg==");
-  Sysinfo = base64_decode("U3lzdGVtU29mdHdhcmVWZXJzaW9uSW5mbw==");
-  display_info = base64_decode("c2V0X0Rpc3BsYXlWZXJzaW9u");
-  uilib_dll = base64_decode(
-      "L3N5c3RlbV9leC9jb21tb25fZXgvbGliL1NjZS5Wc2guVUlMaWIuZGxs");
-
-  LOG_DEBUG("[GMRS-INIT] expected resource names:");
-  LOG_DEBUG("[GMRS-INIT]   debug_settings_xml=\"%s\"", debug_settings_xml.c_str());
-  LOG_DEBUG("[GMRS-INIT]   payloads_xml=\"%s\"", payloads_xml.c_str());
-  LOG_DEBUG("[GMRS-INIT]   cheats_xml=\"%s\"", cheats_xml.c_str());
-}
-
-// ---------------------------------------------------------------------------
-// Phase 4: version banner
-// ---------------------------------------------------------------------------
-
-bool init_version_string(const OrbisKernelSwVersion& sw) {
-  /* XOR with base64_decode(kXorKeyB64) == "SISTR0_I_SEE_YOU" (not the b64 text). */
-  /* XOR "OnionHEN " with SISTR0_I_SEE_YOU. Regenerate: encryptver.py "OnionHEN " */
-  const char enc_ver[] = "\x1c\x27\x3a\x3b\x3c\x78\x1a\x07\x7f"; /* "OnionHEN " */
-  const std::string key = base64_decode(kXorKeyB64);
-  auto dev_ver_bytes =
-      encrypt_decrypt(reinterpret_cast<const unsigned char*>(enc_ver),
-                      sizeof(enc_ver) - 1, key);
-  std::string dec_ver(dev_ver_bytes.begin(), dev_ver_bytes.end());
-  dec_ver += ONIONHEN_VERSION;
-
-  std::string final_ver;
-#if PUBLIC_TEST == 1
-  final_ver = dec_ver + "-PUBLIC_TEST (" + sw.version_str + " )";
-#elif PRE_RELEASE == 1
-  final_ver = dec_ver + " PRE_RELEASE (" + sw.version_str + " )";
-#else
-  final_ver = dec_ver + " (" + sw.version_str + " )";
-#endif
-
-  LOG_DEBUG("Decrypted Version: %s", final_ver.c_str());
-  if (!SetVersionString(final_ver.c_str())) {
-    LOG_ERROR("Failed to set version string");
-    return false;
-  }
-  return true;
-}
-
-// ---------------------------------------------------------------------------
 // Phase 5: load Mono assemblies
 // ---------------------------------------------------------------------------
-
-bool load_shell_images(ShellImages& out) {
-  out.legacy = require_dll(legacy_dec.c_str());
-  out.mscorlib = require_dll("mscorlib.dll");
-  out.react_pui = require_dll("ReactNative.PUI.dll");
-  out.app_system = require_dll(appsystem_dll.c_str());
-  out.core = require_dll("Sce.PlayStation.Core.dll");
-  out.capture_menu = require_dll("Sce.Vsh.ShellUI.CaptureMenu.dll");
-
-  // Optional: LaunchApp / KillAppWithReason only when present
-  out.lnc = getDLLimage("Sce.Vsh.LncUtilWrapper.dll");
-  if (!out.lnc)
-    notify("notify.hook.lnc_image");
-
-  out.react_common = require_dll("ReactNative.Vsh.Common.dll");
-  out.rn_shell = require_dll("Sce.Vsh.ShellUI.ReactNativeShellApp.dll");
-  out.pui = require_dll("Sce.PlayStation.PUI.dll");
-
-  // Publish images other modules need
-  AppSystem_img = out.app_system;
-  react_common_img = out.react_common;
-  pui_img = out.pui;
-
-  return out.legacy && out.mscorlib && out.react_pui && out.app_system && out.core &&
-         out.capture_menu && out.react_common && out.rn_shell && out.pui;
-}
 
 // ---------------------------------------------------------------------------
 // Phase 6: resolve Game container scene
@@ -508,182 +387,6 @@ bool install_mono_hook(const MonoHookSpec& h) {
   return true;
 }
 
-bool install_optional_diag(const char* tag, MonoImage* image, const char* ns,
-                           const char* klass, const char* method, int argc,
-                           void* hook, void** orig) {
-  const uint64_t addr = Get_Address_of_Method(image, ns, klass, method, argc);
-  if (!addr) {
-    LOG_ERROR("%s not found", tag);
-    return false;
-  }
-  const bool installed = InstallDetour(addr, hook, orig);
-  LOG_DEBUG(installed ? "%s hooked" : "%s failed to detour", tag);
-  return installed;
-}
-
-bool install_hooks(const ShellImages& img) {
-  char probe[kMprotectProbeSize];
-  has_hv_bypass = (sceKernelMprotect(probe, sizeof(probe), kProtRwx) == 0);
-  LOG_DEBUG("has_hv_bypass=%d (mprotect for detours)", has_hv_bypass ? 1 : 0);
-
-  Patch_Main_thread_Check(img.core);
-
-  // --- Native (required) ---
-  if (!sceRegMgrGetInt) {
-    notify("notify.hook.regmgr");
-    return false;
-  }
-  if (!install_detour_native("sceRegMgrGetInt",
-                             reinterpret_cast<void*>(sceRegMgrGetInt),
-                             reinterpret_cast<void*>(&sceRegMgrGetInt_hook),
-                             sceRegMgrGetInt, true))
-    return false;
-
-  // --- Standard mono hooks ---
-  // UI3_dec / Settings types use runtime-decoded namespace strings.
-  const MonoHookSpec mono_hooks[] = {
-      {"OptionMenu.createJson", img.rn_shell, "ReactNative.Modules.ShellUI.HomeUI",
-       "OptionMenu", "createJson", 8, reinterpret_cast<void*>(&createJson_hook),
-       reinterpret_cast<void**>(&createJson), true},
-      /* Optional: Core.Input may still be loading while we install; missing is non-fatal. */
-      {"GamePad.GetData", img.core, "Sce.PlayStation.Core.Input", "GamePad", "GetData",
-       1, reinterpret_cast<void*>(&GetData_hook), reinterpret_cast<void**>(&GetData),
-       false},
-      {"SettingsPlugin.CxmlUri", img.legacy, UI3_dec.c_str(), "SettingsPlugin",
-       "CxmlUri", 1, reinterpret_cast<void*>(&CxmlUri_Hook),
-       reinterpret_cast<void**>(&CxmlUri), false},
-      {"SettingPage.OnPressed", img.legacy, UI3_dec.c_str(), "SettingPage", "OnPressed",
-       2, reinterpret_cast<void*>(&OnPress_Hook), reinterpret_cast<void**>(&oOnPress),
-       false},
-      {"SettingPage.OnCreating", img.legacy, UI3_dec.c_str(), "SettingPage",
-       "OnCreating", 1, reinterpret_cast<void*>(&OnPreCreate_Hook),
-       reinterpret_cast<void**>(&oOnPreCreate), false},
-      {"SettingPage.OnActivated", img.legacy, UI3_dec.c_str(), "SettingPage",
-       "OnActivated", 1, reinterpret_cast<void *>(&SettingPageOnActivated_Hook),
-       reinterpret_cast<void **>(&oSettingPageOnActivated), false},
-      {"SettingList.Cleanup", img.legacy, UI3_dec.c_str(), "SettingList",
-       "Cleanup", 0, reinterpret_cast<void *>(&SettingListCleanup_Hook),
-       reinterpret_cast<void **>(&oSettingListCleanup), false},
-      {"UserCustomElementUI.Reset", img.legacy, UI3_dec.c_str(),
-       "UserCustomElementUI", "Reset", 1,
-       reinterpret_cast<void*>(&UserCustomElementReset_Hook),
-       reinterpret_cast<void**>(&oUserCustomElementReset), false},
-      {"SettingPageStack.OnPopping", img.legacy, UI3_dec.c_str(),
-       "SettingPageStack", "OnPopping", 2,
-       reinterpret_cast<void *>(&SettingPageStackOnPopping_Hook),
-       reinterpret_cast<void **>(&oSettingPageStackOnPopping), false},
-      {"SettingsPlugin.GetString", img.legacy, UI3_dec.c_str(), "SettingsPlugin",
-       "GetString", 1, reinterpret_cast<void*>(&GetString_Hook),
-       reinterpret_cast<void**>(&oGetString), true},
-      {"EventManager.OnShareButton", img.capture_menu, "Sce.Vsh.ShellUI.CaptureMenu",
-       "EventManager", "OnShareButton", 1, reinterpret_cast<void*>(&OnShareButton),
-       reinterpret_cast<void**>(&OnShareButton_orig), false},
-  };
-
-  for (const MonoHookSpec& h : mono_hooks) {
-    if (!install_mono_hook(h))
-      return false;
-  }
-
-  // --- Optional diagnostics (log only) ---
-  (void)install_optional_diag(
-      "[DBG-NAV] UpdateNavigationState", img.react_pui, "ReactNative.Views.UI3.View",
-      "ReactNavigatorManager", "UpdateNavigationState", 1,
-      reinterpret_cast<void*>(&ReactNavigatorManager_UpdateNavigationState_Hook),
-      reinterpret_cast<void**>(&ReactNavigatorManager_UpdateNavigationState_Orig));
-
-  install_homeui_top_nav_hooks(img.react_pui);
-
-  (void)install_optional_diag(
-      "[DBG-GETMODEL] GetModel", img.rn_shell, "ReactNative.Modules.ShellUI.Settings",
-      "DebugSettingsModule", "GetModel", 2,
-      reinterpret_cast<void*>(&DebugSettings_GetModel_Hook),
-      reinterpret_cast<void**>(&DebugSettings_GetModel_Orig));
-
-  // --- LncUtil (optional image) ---
-  if (img.lnc) {
-    (void)install_mono_hook(
-        {"LncUtilWrapper.LaunchApp", img.lnc, "Sce.Vsh.LncUtil", "LncUtilWrapper",
-         "LaunchApp", 4, reinterpret_cast<void*>(&LaunchApp),
-         reinterpret_cast<void**>(&LaunchApp_orig), false});
-    const uint64_t kill_addr = Get_Address_of_Method(
-        img.lnc, "Sce.Vsh.LncUtil", "LncUtilWrapper", "KillAppWithReason", 2);
-    if (kill_addr &&
-        !DetourFunction(kill_addr, reinterpret_cast<void*>(&KillAppWithReason_Hook)))
-      notify("notify.hook.kill_app");
-  }
-
-  // --- RNPS bundle decrypt path ---
-  if (!ioctl) {
-    notify("notify.hook.rnps_find");
-    return false;
-  }
-  LOG_DEBUG("Found ioctl at %p", reinterpret_cast<void *>(ioctl));
-  if (!DetourFunction(reinterpret_cast<uintptr_t>(ioctl),
-                      reinterpret_cast<void*>(&ioctl_hook))) {
-    notify("notify.hook.rnps_detour");
-    return false;
-  }
-  LOG_DEBUG("Detoured ioctl to ioctl_hook");
-
-  // --- BootHelper.Boot: 3-arg then 2-arg ---
-  if (!install_mono_hook({"BootHelper.Boot(3)", img.app_system, "Sce.Vsh.ShellUI.AppSystem",
-                          "BootHelper", "Boot", 3, reinterpret_cast<void*>(&uri_boot_hook),
-                          reinterpret_cast<void**>(&boot_orig), false}) ||
-      !boot_orig) {
-    if (!install_mono_hook(
-            {"BootHelper.Boot(2)", img.app_system, "Sce.Vsh.ShellUI.AppSystem",
-             "BootHelper", "Boot", 2, reinterpret_cast<void*>(&uri_boot_hook_2),
-             reinterpret_cast<void**>(&boot_orig_2), false}) ||
-        !boot_orig_2)
-      notify("notify.hook.boot");
-  }
-
-  // --- CaptureScreen: 4-arg then 5-arg ---
-  if (!install_mono_hook(
-          {"CaptureScreen(4)", img.capture_menu, "Sce.Vsh.ShellUI.CaptureMenu",
-           "CaptureController", "CaptureScreen", 4,
-           reinterpret_cast<void*>(&CaptureScreen_old),
-           reinterpret_cast<void**>(&CaptureScreen_orig_old), false}) ||
-      !CaptureScreen_orig_old) {
-    if (!install_mono_hook(
-            {"CaptureScreen(5)", img.capture_menu, "Sce.Vsh.ShellUI.CaptureMenu",
-             "CaptureController", "CaptureScreen", 5,
-             reinterpret_cast<void*>(&CaptureScreen_new),
-             reinterpret_cast<void**>(&CaptureScreen_orig_new), false}) ||
-        !CaptureScreen_orig_new)
-      notify("notify.hook.capture");
-  }
-
-  // --- GetManifestResourceStream (class name differs on 3.xx) ---
-  {
-    const char* klass = is_3xx ? "Assembly" : "RuntimeAssembly";
-    const uint64_t method = Get_Address_of_Method(
-        img.mscorlib, "System.Reflection", klass, "GetManifestResourceStream", 1);
-    if (!method) {
-      notify("notify.hook.master");
-      return false;
-    }
-    (void)install_mono_hook(
-        {"GetManifestResourceStream", img.mscorlib, "System.Reflection", klass,
-         "GetManifestResourceStream", 1,
-         reinterpret_cast<void*>(&GetManifestResourceStream_Hook),
-         reinterpret_cast<void**>(&GetManifestResourceStream_Original), false});
-  }
-
-  /*
-   * Arm the per-frame entry point only after every dependency it can observe is
-   * ready. Keeping this last prevents the UI thread from entering Onion code
-   * while the installer is still compiling and committing other Mono hooks.
-   */
-  (void)install_mono_hook(
-      {"PUI.Application.Update", img.pui, "Sce.PlayStation.PUI",
-       "Application", "Update", 0, reinterpret_cast<void*>(&OnRender_Hook),
-       reinterpret_cast<void**>(&OnRender_orig), false});
-
-  return true;
-}
-
 // ---------------------------------------------------------------------------
 // Phase 8: process query hooks + keep-alive
 // ---------------------------------------------------------------------------
@@ -708,13 +411,9 @@ void setup_proc_hooks() {
 void run_keep_alive() {
   // Publish the initialized SceShellUI process instance.  The daemon keeps
   // this marker so a restart cannot inject a second Toolbox into the same PID.
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
   // The standalone overlay is not the toolbox: use its own marker so the
   // OnionHEN daemon does not mistake it for an injected toolbox.
   onion_ready_signal_pid(ONION_READY_FPS_OVERLAY, getpid());
-#else
-  onion_ready_signal_pid(ONION_READY_TOOLBOX, getpid());
-#endif
 
   while (true) {
     LOG_DEBUG("sleeping ....");
@@ -724,7 +423,6 @@ void run_keep_alive() {
 
 } // namespace
 
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
 /*
  * Standalone FPS overlay entry. Used by standalone_fps: no toolbox, no
  * settings file, no plugin bridge, no resource hooks. Only the per-frame
@@ -827,7 +525,6 @@ int fps_overlay_only_main() {
 }
 
 } // namespace
-#endif
 
 // ---------------------------------------------------------------------------
 // main — orchestration only
@@ -840,89 +537,5 @@ int main(int argc, char const* argv[]) {
   if (hooked)
     return 0;
 
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
   return fps_overlay_only_main();
-#endif
-
-  const pid_t pid = getpid();
-  AuthIdGuard auth(pid, set_ucred_to_ptrace());
-
-  if (!resolve_native_symbols(pid))
-    return -1;
-
-  LOG_DEBUG("Starting ShellUI Module ....");
-
-  if (!resolve_mono_symbols(pid))
-    return -1;
-
-  init_resource_names();
-
-  OrbisKernelSwVersion sw{};
-  sceKernelGetProsperoSystemSwVersion(&sw);
-  is_3xx = (sw.version < kFw3xxMaxExclusive);
-  is_6xx = (sw.version >= kFw6xxMin);
-  shellui_configure_debug_settings_route(sw.version);
-  onion::shellui::dynamic_ui::configure(sw.version);
-  if (!onion::shellui::plugin_ui_bridge::start())
-    LOG_ERROR("Failed to start dynamic plugin UI bridge");
-  LOG_DEBUG("System Software Version: %s is_3xx: %s debug_settings_old: %s",
-              sw.version_str, is_3xx ? "Yes" : "No",
-              shellui_debug_settings_uses_old_route() ? "Yes" : "No");
-
-  if (!mono_get_root_domain)
-    return -1;
-
-  LOG_DEBUG("loading settings");
-  if (!LoadSettings()) {
-    LOG_ERROR("Failed to load settings");
-    return -1;
-  }
-  LOG_DEBUG("Settings loaded successfully");
-
-  Root_Domain = mono_get_root_domain();
-  if (!Root_Domain) {
-    LOG_ERROR("failed to get shellui root domain");
-    return -1;
-  }
-  LOG_DEBUG("Shellui Root Domain: %p", static_cast<void *>(Root_Domain));
-  mono_thread_attach(Root_Domain);
-
-  if (!init_version_string(sw))
-    return -1;
-
-  ShellImages images;
-  if (!load_shell_images(images))
-    return -1;
-  if (!resolve_game_container(images.app_system))
-    return -1;
-
-  LOG_DEBUG("Starting hooking...");
-  shellui_hooks_begin_install();
-  if (!install_hooks(images)) {
-    shellui_hooks_publish_failed();
-    return -1;
-  }
-
-  LOG_DEBUG("Performing Magic ....");
-
-  // Drop elevated auth before long-running work
-  set_proc_authid(pid, auth.old_authid);
-  auth.release();
-
-  LOG_DEBUG("Performed Magic");
-  setup_proc_hooks();
-
-  /* SystemService cannot be queried under PTRACE_AUTHID. */
-  toolbox_i18n::apply_system_or_ui_lang(g_settings.ui_lang);
-
-  shellui_hooks_publish_ready();
-  /*
-   * Home already cached pre-inject state. Display-TID spoof and the top-nav
-   * RNPS patch both need NPXS40002 ReloadApp on the UI thread (OnRender), not
-   * this inject worker. One pending flag coalesces both reasons.
-   */
-  shellui_request_home_reload();
-  hooked = true;
-  run_keep_alive();
-  return 0;
 }

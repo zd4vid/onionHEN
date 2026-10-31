@@ -29,9 +29,7 @@ target_include_directories(${PROJECT_NAME}
   PUBLIC  "${D_CWD}/include"
   PRIVATE "${D_CWD}/../include"
   PUBLIC  "${D_CWD}/../libonion_platform/include"
-  PRIVATE "${D_CWD}/../libonion_ipc/include"
 )
 
 # Logging symbols (shellui_log) come from onion_ipc at final link.
-add_dependencies(${PROJECT_NAME} onion_ipc)
 

@@ -58,9 +58,8 @@ link_directories("${ONIONHEN_OUT_LIB}" "${ONIONHEN_PS5_STUB_DIR}")
 set(ONIONHEN_FPS_OVERLAY_ONLY ON CACHE BOOL "" FORCE)
 
 # Libraries shellui and the injector need (same order as source/CMakeLists.txt).
-foreach(lib libonion_proc libonion_platform libonion_payload libonion_ipc
-            libonion_settings libonion_detour libonion_ready
-            libonion_plugin_ui libonion_plugin_bridge libonion_elfldr libNineS)
+foreach(lib libonion_proc libonion_platform libonion_detour libonion_ready
+            libonion_elfldr libNineS)
   add_subdirectory("${PROJECT_ROOT}/${lib}" "${lib}")
 endforeach()
 add_subdirectory("${PROJECT_ROOT}/shellui" shellui)

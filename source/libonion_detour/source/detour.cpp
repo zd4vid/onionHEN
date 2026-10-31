@@ -22,7 +22,6 @@ along with this program; see the file COPYING. If not, see
 #include <cstring>
 #include <cstdlib>
 
-#include <onion/ipc_client.hpp>
 #include <onion/trampoline_arena.hpp>
 #include <onion/x64_relocator.h>
 

@@ -1144,8 +1144,6 @@ void OnRender_Hook(MonoObject* instance) {
     if (std::strcmp(sig, last_layout_sig) == 0 &&
         metrics_now_ns < next_forced_layout_ns) {
       OnRender_orig(instance);
-      shellui_poll_cheat_progress();
-      shellui_poll_plugin_progress();
       return;
     }
     std::memcpy(last_layout_sig, sig, sizeof(sig));
@@ -1171,6 +1169,4 @@ void OnRender_Hook(MonoObject* instance) {
    * can restore its default Progress=1.0. Apply our value after that update so
    * the final value committed for this frame is the daemon state.
    */
-  shellui_poll_cheat_progress();
-  shellui_poll_plugin_progress();
 }
