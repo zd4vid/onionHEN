@@ -2,12 +2,12 @@
  *
  * ShellUI API surface: types + Mono hooks.
  * Prefer including shellui_types.hpp alone when hooks are not needed.
- * Do NOT include this from ipc.hpp (breaks compile seam).
  */
 #pragma once
 #include "shellui_types.hpp"
 #include "hook_lifecycle.hpp"
 #include <cstdint>
+#include <onion/log.h>
 
 /* Minimal DIR surface used by payload scanners (not full BSD dirent). */
 typedef struct _dirdesc {
@@ -185,7 +185,6 @@ result Invoke(MonoImage* Assembly_Image, MonoClass* klass, MonoObject* Instance,
 
 
 /* ================================= HOOKED MONO FUNCS ============================================= */
-#include "shellui_state.hpp"
 
 extern  std::string UI3_dec;
 extern  std::string legacy_dec;
@@ -203,7 +202,5 @@ MonoObject* CreateLabel(const char* name, float x, float y, const char* text, Mo
 void Widget_Append_Child(MonoObject* widget, MonoObject* child);
 MonoObject* New_Object(MonoClass* Klass);
 MonoImage * getDLLimage(const char* dll_file);
-#include <onion/proc_query.h>
 #include <onion/platform.h>
-int LaunchApp(MonoString* titleId, uint64_t* args, int argsSize, LaunchAppParam *param);
 /* ================================= HOOKED MONO FUNCS ============================================= */

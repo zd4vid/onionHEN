@@ -15,22 +15,14 @@ along with this program; see the file COPYING. If not, see
 <http://www.gnu.org/licenses/>.  */
 
 #include "detour.h"
-#include "debug_settings_route_runtime.hpp"
-#include "dynamic_ui_runtime.hpp"
 #include "hooked_funcs.hpp"
 #include "defs.h"
 #include "external_symbols.hpp"
-#include "homeui_top_nav_patch.hpp"
-#include "ipc.hpp"
-#include "plugin_ui_bridge_client.hpp"
 #include "proc.h"
 #include "ps5/kernel.h"
-#include "toolbox_i18n.hpp"
 #include "ucred.h"
-#include "webserver.hpp"
 
 #include <onion/notify.h>
-#include <onion/proc_query.h>
 #include <onion/ready.h>
 
 #include <cstring>

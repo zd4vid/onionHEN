@@ -9,7 +9,6 @@
 
 #include "hooked_funcs.hpp"
 #include "external_symbols.hpp"
-#include "ipc.hpp"
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -19,7 +18,6 @@ extern MonoObject *Game;
 extern MonoObject *rootWidget;
 extern MonoObject *font;
 extern OverlayLayout g_overlay_layout;
-#include "shellui_state.hpp"
 extern onion::Settings g_settings;
 
 MonoObject *CreateLabel(const char *name, float x, float y, const char *text,

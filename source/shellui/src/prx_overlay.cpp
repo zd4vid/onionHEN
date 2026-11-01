@@ -5,13 +5,11 @@
 #include <time.h>
 #include <algorithm>
 #include "hooked_funcs.hpp"
-#include "ipc.hpp"
 #include "external_symbols.hpp"
 #include "overlay_text_metrics.hpp"
 #include <onion/fps_sample.h>
 #include <onion/net.h>
 #include <onion/settings.hpp>
-#include "plugin_progress.hpp"
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
@@ -20,7 +18,6 @@ extern MonoObject* rootWidget;
 extern MonoObject* font;
 extern OverlayLayout g_overlay_layout;
 extern onion::Settings g_settings;
-#include "shellui_state.hpp"
 void RemoveGameWidget(RemoveWidget widget);
 bool CreateGameWidget(CreateWidget widget);
 MonoObject* CreateLabel(const char* name, float x, float y, const char* text, MonoObject* fontObj, int horzAlign, int vertAlign, float r, float g, float b, float a);

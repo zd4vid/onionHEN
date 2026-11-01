@@ -2,25 +2,11 @@
  * ShellUI domain types / enums / settings externs (no Mono hooks).
  */
 #pragma once
+
 #include "external_symbols.hpp"
 #include "overlay_layout.hpp"
 #include <string>
-#include <vector>
-#include <iostream>
-#include "defs.h"
 #include <onion/settings.hpp>
-#include <onion/payload_config.h>
-
-#define MAX_LINE 256
-#define MAX_PAIRS 100
-
-#define SCE_LNC_UTIL_ERROR_ALREADY_RUNNING 0x8094000c
-#define SCE_LNC_UTIL_ERROR_ALREADY_RUNNING_KILL_NEEDED 0x80940010
-#define SCE_LNC_UTIL_ERROR_ALREADY_RUNNING_SUSPEND_NEEDED 0x80940011
-
-#define SCE_REGMGR_ENT_KEY_DEVENV_TOOL_SHELLUI_disp_titleid 2013448470
-#define SCE_REGMGR_INT_SIZE 4
-#define SCE_REGMGR_ERROR_PRM_REGID 0x800D0203
 
 static const std::string base64_chars =
 "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -57,28 +43,6 @@ struct WidgetConfig {
 
 void RemoveGameWidget(RemoveWidget widget);
 bool CreateGameWidget(CreateWidget widget);
-
-struct LaunchAppParam
-{
-  unsigned int size;
-  int userId;
-  int appAttr;
-  int enableCrashReport;
-  int checkFlag;
-  unsigned long contextId;
-  bool isSpeculativeLaunch;
-};
-
-/** List entry for a payload .elf in the toolbox. */
-typedef struct PayloadEntry {
-    std::string path;
-    std::string shellui_path;
-    std::string tid;  /* path-derived key for PID / launch */
-    std::string id;   /* stable resource/control suffix */
-    std::string name;
-    std::string version;
-    OnionPayloadConfig config{};
-} PayloadEntry;
 
 extern onion::Settings g_settings;
 

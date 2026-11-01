@@ -12,57 +12,13 @@ set(D_SRC ${D_CWD}/src)
 add_executable(${PROJECT_NAME})
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "${PROJECT_NAME}.elf")
 
-# Finalize main target sources
 target_compile_options(${PROJECT_NAME} PUBLIC
 	$<$<COMPILE_LANGUAGE:C>:${C_DEFS} ${C_FLAGS}>
 	$<$<COMPILE_LANGUAGE:CXX>:${CXX_DEFS} ${CXX_FLAGS}>
 	$<$<COMPILE_LANGUAGE:ASM>:${ASM_FLAGS}>
 )
-# --icf=safe needs .llvm_addrsig in every input object; the SDK's crt1.o has
-# none, so lld warns ("--icf=safe conservatively ignores SHT_LLVM_ADDRSIG").
-# The standalone overlay build therefore links without ICF (set below); the
-# full build keeps --icf=safe.
-target_link_options(${PROJECT_NAME} PRIVATE "-Wl,--gc-sections")
-
-# A/B: disable HomeUI top-nav Hermes patch without editing sources.
-#   cmake -DONIONHEN_SHELLUI_HOMEUI_TOP_NAV_PATCH=OFF ...
-option(ONIONHEN_SHELLUI_HOMEUI_TOP_NAV_PATCH
-	"Patch HomeUI top-nav Fps slot into OnionHEN entry" ON)
-if(NOT ONIONHEN_SHELLUI_HOMEUI_TOP_NAV_PATCH)
-	target_compile_definitions(${PROJECT_NAME} PRIVATE SHELLUI_HOMEUI_TOP_NAV_PATCH=0)
-	message(STATUS "shellui: HomeUI top-nav patch DISABLED")
-endif()
-
-# Standalone FPS overlay build (see standalone_fps/): the module only installs
-# the per-frame overlay hook and skips toolbox/settings/plugin startup.
-option(ONIONHEN_FPS_OVERLAY_ONLY "Build shellui as the standalone FPS overlay" OFF)
-if(ONIONHEN_FPS_OVERLAY_ONLY)
-	target_compile_definitions(${PROJECT_NAME} PRIVATE ONIONHEN_FPS_OVERLAY_ONLY=1)
-	target_link_options(${PROJECT_NAME} PRIVATE "-Wl,--icf=none")
-	message(STATUS "shellui: FPS overlay-only mode")
-else()
-	target_link_options(${PROJECT_NAME} PRIVATE "-Wl,--icf=safe")
-endif()
-
-find_package(Python3 REQUIRED COMPONENTS Interpreter)
-
-set(I18N_DIR "${D_CWD}/../i18n")
-set(I18N_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
-set(I18N_CATALOG "${I18N_GENERATED_DIR}/toolbox_i18n_catalog.inc")
-file(GLOB I18N_LOCALE_JSON CONFIGURE_DEPENDS "${I18N_DIR}/*.json")
-add_custom_command(
-	OUTPUT "${I18N_CATALOG}"
-	COMMAND "${Python3_EXECUTABLE}" "${I18N_DIR}/generate_catalog.py"
-		--locales-dir "${I18N_DIR}"
-		--catalog toolbox
-		--output "${I18N_CATALOG}"
-	DEPENDS
-		"${I18N_DIR}/generate_catalog.py"
-		${I18N_LOCALE_JSON}
-	COMMENT "Generating toolbox i18n catalog"
-	VERBATIM
-)
-add_custom_target(shellui_i18n_catalog DEPENDS "${I18N_CATALOG}")
+# The SDK's crt1.o has no .llvm_addrsig, so --icf=safe would only warn.
+target_link_options(${PROJECT_NAME} PRIVATE "-Wl,--gc-sections" "-Wl,--icf=none")
 
 set(SrcFiles
 	${D_SRC}/prx.cpp
@@ -75,7 +31,6 @@ set(SrcFiles
 	${D_SRC}/hook_lifecycle.cpp
 	${D_SRC}/external_symbols.cpp
 	${D_SRC}/hook_functions.cpp
-	${D_SRC}/prx_install.cpp
 	${D_SRC}/shellui_notify.cpp
 )
 
@@ -86,26 +41,18 @@ set(CMAKE_C_FLAGS_RELEASE "-Os -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE "-Os -DNDEBUG")
 
 target_sources(${PROJECT_NAME} PRIVATE ${SrcFiles})
-add_dependencies(${PROJECT_NAME} shellui_i18n_catalog onion_version onion_detour onion_proc onion_platform onion_ready)
+add_dependencies(${PROJECT_NAME} onion_detour onion_proc onion_platform onion_ready)
 onion_target_debug_define(${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME} PRIVATE
 	"${D_CWD}/include"
-	"${I18N_GENERATED_DIR}"
-	"${ONIONHEN_THIRD_PARTY_DIR}/cjson"
-	"${ONIONHEN_THIRD_PARTY_DIR}/sha1"
-	"${PROJECT_ROOT}/libonion_ipc/include"
-	"${PROJECT_ROOT}/libonion_payload/include"
 	"${PROJECT_ROOT}/libonion_settings/include"
 	"${PROJECT_ROOT}/libonion_detour/include"
 	"${PROJECT_ROOT}/libonion_proc/include"
 	"${PROJECT_ROOT}/libonion_platform/include"
 	"${PROJECT_ROOT}/libonion_fps/include"
-	"${PROJECT_ROOT}/libonion_plugin_ui/include"
-	"${PROJECT_ROOT}/libonion_plugin_bridge/include"
 	"${PROJECT_ROOT}/include"
 )
 target_link_directories	(${PROJECT_NAME} PUBLIC "${ONIONHEN_PS5_STUB_DIR}")
-target_link_libraries	(${PROJECT_NAME} PUBLIC onion_detour onion_proc onion_platform onion_ready SceRegMgr SceSystemService SceUserService SceNetCtl)
+target_link_libraries	(${PROJECT_NAME} PUBLIC onion_detour onion_proc onion_platform onion_ready SceNetCtl)
 
-# Add post-build command
 onion_strip_debug(${PROJECT_NAME})

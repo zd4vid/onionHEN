@@ -4,7 +4,6 @@
 #include <onion/notify_i18n.h>
 #include <onion/log.h>
 
-#include "cJSON.hpp"
 
 #include <stdarg.h>
 #include <stddef.h>

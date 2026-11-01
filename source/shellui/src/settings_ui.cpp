@@ -4,11 +4,7 @@
  */
 
 #include "hooked_funcs.hpp"
-#include "toolbox_i18n.hpp"
 #include <onion/platform.h>
-#include <onion/ready.h>
-#include <onion/log_settings.hpp>
-#include "ipc.hpp" // shellui_log + IPC_Client
 #include <onion/settings.hpp>
 
 void apply_overlay_layout() {

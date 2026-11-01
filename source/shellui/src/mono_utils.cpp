@@ -5,7 +5,6 @@
 
 #include "hooked_funcs.hpp"
 #include "external_symbols.hpp"
-#include "ipc.hpp"
 #include <cctype>
 #include <cstring>
 #include <string>

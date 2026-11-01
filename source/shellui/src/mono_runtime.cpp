@@ -6,7 +6,6 @@
 #include "hooked_funcs.hpp"
 #include "external_symbols.hpp"
 #include "defs.h"
-#include "ipc.hpp" // shellui_log
 #include <atomic>
 #include <string>
 #include <cstring>
