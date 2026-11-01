@@ -408,9 +408,6 @@ static constexpr int kDceReopenPasses = 50;
 static constexpr int kDceMaxReopensPerTitle = 6;
 /* A scanout rate measured this recently may seed a title that has no value yet. */
 static constexpr double kSeedFreshSec = 1.5;
-/* The last value of a title is reused if the same title shows up again within
- * this long (paused/static screens produce no frames to re-measure). */
-static constexpr double kHoldSameTitleSec = 7200.0;
 static constexpr double kStallLogSec = 10.0;
 
 static void *safe_sampler_thread(void *) {
@@ -429,11 +426,6 @@ static void *safe_sampler_thread(void *) {
    * start already has a baseline and a recent rate to show. */
   float recent_hz = 0.f;
   double recent_hz_t = 0.0;
-  /* Last value shown for a title, reused if that title reappears. */
-  std::string good_tid;
-  float good_fps = 0.f;
-  double good_t = 0.0;
-
   /* The name read from the app metadata can come back empty (files not there
    * yet): retry for a while and reuse the last name known for the same title. */
   std::string name_tid, name_keep;
@@ -540,11 +532,7 @@ static void *safe_sampler_thread(void *) {
       /* Show something straight away instead of "--" until frames are seen. */
       float seed = 0.f;
       const char *why = nullptr;
-      if (tid == good_tid && good_fps >= onion::fps::kFpsMin &&
-          now - good_t < kHoldSameTitleSec) {
-        seed = good_fps;
-        why = "last value of this title";
-      } else if (recent_hz >= onion::fps::kFpsMin &&
+      if (recent_hz >= onion::fps::kFpsMin &&
                  recent_hz <= onion::fps::kFpsMax &&
                  now - recent_hz_t < kSeedFreshSec) {
         seed = recent_hz;
@@ -581,9 +569,6 @@ static void *safe_sampler_thread(void *) {
      * transient ioctl failure) the last known value is repeated. */
     const float shown = wn > 0 ? onion::fps::rolling_mean(window, wn) : 0.f;
     if (wn > 0) {
-      good_tid = tid;
-      good_fps = shown;
-      good_t = now;
       if (first_value_pending) {
         LOG_INFO("safe fps: first value %.1f fps, %.0f ms after detection",
                  shown, (now - detected_t) * 1000.0);
