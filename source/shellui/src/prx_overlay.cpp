@@ -199,7 +199,7 @@ char g_overlay_title[96] = {};
  * Standalone FPS overlay: plain text rows, no background panel.
  *
  *   FPS: 59.94
- *   CPU: 43°C / GPU: 35°C
+ *   CPU: 43°C / SOC: 35°C
  *   RAM: 18% 3102MB
  *   VRAM: 15% 2574MB
  *   FAN: 74%
@@ -210,8 +210,8 @@ char g_overlay_title[96] = {};
  * off-screen. Rows whose value is not available yet are skipped.
  */
 void layout_bar_labels(const char *fps_str, const char *cpu_temp,
-                       const char *cpu_usage, const char *gpu_temp,
-                       const char *gpu_usage, const char *ram_str,
+                       const char *cpu_usage, const char *soc_temp,
+                       const char *soc_usage, const char *ram_str,
                        const char *ip_str, const char *fan_str) {
   (void)cpu_usage;
 
@@ -234,18 +234,18 @@ void layout_bar_labels(const char *fps_str, const char *cpu_temp,
   }
 
   const bool show_cpu = g_settings.overlay_cpu;
-  const bool show_gpu = g_settings.overlay_gpu;
-  if (show_cpu || show_gpu) {
+  const bool show_soc = g_settings.overlay_soc;
+  if (show_cpu || show_soc) {
     const char *c = (cpu_temp && cpu_temp[0]) ? cpu_temp : "--";
-    const char *g = (gpu_temp && gpu_temp[0]) ? gpu_temp : "--";
+    const char *g = (soc_temp && soc_temp[0]) ? soc_temp : "--";
     rows[nrows].id = "id_cpu_label";
-    if (show_cpu && show_gpu)
+    if (show_cpu && show_soc)
       std::snprintf(rows[nrows].text, sizeof(rows[nrows].text),
-                    "CPU: %s / GPU: %s", c, g);
+                    "CPU: %s / SOC: %s", c, g);
     else if (show_cpu)
       std::snprintf(rows[nrows].text, sizeof(rows[nrows].text), "CPU: %s", c);
     else
-      std::snprintf(rows[nrows].text, sizeof(rows[nrows].text), "GPU: %s", g);
+      std::snprintf(rows[nrows].text, sizeof(rows[nrows].text), "SOC: %s", g);
     ++nrows;
   }
 
@@ -258,8 +258,8 @@ void layout_bar_labels(const char *fps_str, const char *cpu_temp,
   };
   if (g_settings.overlay_ram)
     add_row("id_ram_label", "RAM: %s", ram_str);
-  if (g_settings.overlay_ram && g_settings.overlay_gpu)
-    add_row("id_ram_value", "VRAM: %s", gpu_usage);
+  if (g_settings.overlay_ram && g_settings.overlay_soc)
+    add_row("id_ram_value", "VRAM: %s", soc_usage);
   if (g_settings.overlay_fan)
     add_row("id_fan_label", "FAN: %s", fan_str);
   if (g_settings.overlay_ip)
@@ -285,8 +285,8 @@ void layout_bar_labels(const char *fps_str, const char *cpu_temp,
   static const char *kAll[] = {
       "id_fps_label",        "id_fps_value",       "id_fps_sep",
       "id_cpu_label",        "id_cpu_temp_value",  "id_cpu_usage_value",
-      "id_cpu_sep",          "id_gpu_label",       "id_gpu_temp_value",
-      "id_gpu_usage_value",  "id_gpu_sep",         "id_ram_label",
+      "id_cpu_sep",          "id_soc_label",       "id_soc_temp_value",
+      "id_soc_usage_value",  "id_soc_sep",         "id_ram_label",
       "id_ram_value",        "id_ram_sep",         "id_ip_label",
       "id_ip_value",         "id_ip_sep",          "id_fan_label",
       "id_fan_value",        "id_fan_sep",
@@ -380,8 +380,8 @@ bool init_overlay_once(unsigned int idle_tid[kCpuCores]) {
       g_settings.overlay_fps ? "--" : nullptr,
       (g_settings.overlay_cpu || g_settings.all_cpu_usage) ? "--C" : nullptr,
       (g_settings.overlay_cpu || g_settings.all_cpu_usage) ? "--%" : nullptr,
-      g_settings.overlay_gpu ? "--C" : nullptr,
-      g_settings.overlay_gpu ? "--%" : nullptr,
+      g_settings.overlay_soc ? "--C" : nullptr,
+      g_settings.overlay_soc ? "--%" : nullptr,
       g_settings.overlay_ram ? "---- MB" : nullptr,
       g_settings.overlay_ip ? "---.---.---.---" : nullptr,
       g_settings.overlay_fan ? "--%" : nullptr);
@@ -397,7 +397,7 @@ bool sample_cpu_usage(unsigned int idle_tid[kCpuCores], int& current_bank,
   /*
    * Dual-bank sample: first successful GetCpuUsage seeds the other bank; the
    * next one can compute a delta. Bound retries so a stuck/failing CPU probe
-   * cannot block RAM/GPU/IP updates on the same render tick.
+   * cannot block RAM/SOC/IP updates on the same render tick.
    */
   constexpr int kMaxAttempts = 4;
   for (int attempt = 0; attempt < kMaxAttempts; ++attempt) {
@@ -691,8 +691,8 @@ void get_mem_stats(int type, Memory &m) {
 
 void update_overlay_metrics(unsigned int idle_tid[kCpuCores], int& current_bank,
                             char *cpu_temp, size_t cpu_temp_sz, char *cpu_usage,
-                            size_t cpu_usage_sz, char *gpu_temp, size_t gpu_temp_sz,
-                            char *gpu_usage, size_t gpu_usage_sz, char *ram_str,
+                            size_t cpu_usage_sz, char *soc_temp, size_t soc_temp_sz,
+                            char *soc_usage, size_t soc_usage_sz, char *ram_str,
                             size_t ram_sz, char *ip_address, size_t ip_sz,
                             char *fan_str, size_t fan_sz) {
   if (!g_settings.overlay_enabled)
@@ -710,15 +710,15 @@ void update_overlay_metrics(unsigned int idle_tid[kCpuCores], int& current_bank,
              static_cast<int>(RAM.Used));
   }
 
-  if (g_settings.overlay_gpu) {
-    int soc_temp = 0;
-    sceKernelGetSocSensorTemperature(0, &soc_temp);
-    snprintf(gpu_temp, gpu_temp_sz, "%d\xC2\xB0" "C", soc_temp); /* 35°C */
+  if (g_settings.overlay_soc) {
+    int soc_celsius = 0;
+    sceKernelGetSocSensorTemperature(0, &soc_celsius);
+    snprintf(soc_temp, soc_temp_sz, "%d\xC2\xB0" "C", soc_celsius); /* 35°C */
     if (g_settings.overlay_ram)
       get_mem_stats(kPageTableVram, VRAM);
     VRAM.Percentage =
         (VRAM.Total > 0) ? ((float)VRAM.Used / (float)VRAM.Total) * 100.0f : 0.f;
-    snprintf(gpu_usage, gpu_usage_sz, "%.0f%% %dMB", VRAM.Percentage,
+    snprintf(soc_usage, soc_usage_sz, "%.0f%% %dMB", VRAM.Percentage,
              static_cast<int>(VRAM.Used));
   }
 
@@ -773,8 +773,8 @@ void OnRender_Hook(MonoObject* instance) {
   static int current_bank = 0;
   static uint64_t next_update_ns = 0;
   static int frames_until_init = kOverlayInitDelayFrames;
-  static char gpu_temp[32] = {};
-  static char gpu_usage[32] = {};
+  static char soc_temp[32] = {};
+  static char soc_usage[32] = {};
   static char cpu_temp[32] = {};
   static char cpu_usage[120] = {};
   static char ram_str[32] = {};
@@ -865,8 +865,8 @@ void OnRender_Hook(MonoObject* instance) {
   if (tick) {
     update_overlay_metrics(idle_thread_id, current_bank, cpu_temp,
                            sizeof(cpu_temp), cpu_usage, sizeof(cpu_usage),
-                           gpu_temp, sizeof(gpu_temp), gpu_usage,
-                           sizeof(gpu_usage), ram_str, sizeof(ram_str),
+                           soc_temp, sizeof(soc_temp), soc_usage,
+                           sizeof(soc_usage), ram_str, sizeof(ram_str),
                            ip_address, sizeof(ip_address), fan_str,
                            sizeof(fan_str));
     next_update_ns = metrics_now_ns + kOverlayUpdateIntervalNs;
@@ -895,7 +895,7 @@ void OnRender_Hook(MonoObject* instance) {
      * shown text changed (and at least every 5 s as a safety refresh). */
     char sig[sizeof(last_layout_sig)];
     std::snprintf(sig, sizeof(sig), "%s|%s|%s|%s|%s|%s|%s", fps_str, cpu_temp,
-                  gpu_temp, ram_str, ip_address, fan_str, g_overlay_title);
+                  soc_temp, ram_str, ip_address, fan_str, g_overlay_title);
     if (std::strcmp(sig, last_layout_sig) == 0 &&
         metrics_now_ns < next_forced_layout_ns) {
       OnRender_orig(instance);
@@ -909,8 +909,8 @@ void OnRender_Hook(MonoObject* instance) {
                                                              : nullptr,
         (g_settings.overlay_cpu || g_settings.all_cpu_usage) ? cpu_usage
                                                              : nullptr,
-        g_settings.overlay_gpu ? gpu_temp : nullptr,
-        g_settings.overlay_gpu ? gpu_usage : nullptr,
+        g_settings.overlay_soc ? soc_temp : nullptr,
+        g_settings.overlay_soc ? soc_usage : nullptr,
         g_settings.overlay_ram ? ram_str : nullptr,
         g_settings.overlay_ip ? ip_address : nullptr,
         g_settings.overlay_fan ? fan_str : nullptr);

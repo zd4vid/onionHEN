@@ -14,7 +14,7 @@ inline constexpr float kGap = 28.0f;
 inline constexpr float kEdgeInset = 24.0f;
 inline constexpr float kCpuAvgWidth = 190.0f;
 inline constexpr float kCpuAllWidth = 420.0f;
-inline constexpr float kGpuWidth = 190.0f;
+inline constexpr float kSocWidth = 190.0f;
 inline constexpr float kRamWidth = 170.0f;
 inline constexpr float kIpWidth = 200.0f;
 inline constexpr float kFanWidth = 130.0f;
@@ -22,7 +22,7 @@ inline constexpr float kFpsWidth = 130.0f;
 inline constexpr int kMetricCount = 6;
 inline constexpr int kMetricFps = 0;
 inline constexpr int kMetricCpu = 1;
-inline constexpr int kMetricGpu = 2;
+inline constexpr int kMetricSoc = 2;
 inline constexpr int kMetricMemory = 3;
 inline constexpr int kMetricIp = 4;
 inline constexpr int kMetricFan = 5;
@@ -81,8 +81,8 @@ struct Layout {
   float label_margin_top = kTextTopInset;
   float overlay_cpu_x = 160.0f;
   float overlay_cpu_y = 12.0f;
-  float overlay_gpu_x = 360.0f;
-  float overlay_gpu_y = 12.0f;
+  float overlay_soc_x = 360.0f;
+  float overlay_soc_y = 12.0f;
   float overlay_ram_x = 560.0f;
   float overlay_ram_y = 12.0f;
   float overlay_ip_x = 740.0f;
@@ -97,14 +97,14 @@ struct Metrics {
   bool enabled = true;
   bool show_fps = true;
   bool show_cpu = true;
-  bool show_gpu = true;
+  bool show_soc = true;
   bool show_ram = true;
   bool show_ip = false;
   bool show_fan = false;
   bool per_core_cpu = false;
   int font_size_pt = static_cast<int>(kFontH);
   /* Must match onion::kOverlayMetric* / kOverlayOrderDefault. */
-  std::array<int, kMetricCount> order{kMetricFps, kMetricCpu, kMetricGpu,
+  std::array<int, kMetricCount> order{kMetricFps, kMetricCpu, kMetricSoc,
                                       kMetricMemory, kMetricIp, kMetricFan};
 };
 
@@ -141,7 +141,7 @@ inline Layout compute_overlay_layout(float screen_w, float screen_h,
   out.bar_h = static_cast<float>(font_pt) + kBarExtra;
   out.label_margin_top = kTextTopInset;
   out.overlay_cpu_x = kOffscreen;
-  out.overlay_gpu_x = kOffscreen;
+  out.overlay_soc_x = kOffscreen;
   out.overlay_ram_x = kOffscreen;
   out.overlay_ip_x = kOffscreen;
   out.overlay_fan_x = kOffscreen;
@@ -159,7 +159,7 @@ inline Layout compute_overlay_layout(float screen_w, float screen_h,
 
   const bool show_cpu =
       metrics.enabled && (metrics.show_cpu || metrics.per_core_cpu);
-  const bool show_gpu = metrics.enabled && metrics.show_gpu;
+  const bool show_soc = metrics.enabled && metrics.show_soc;
   const bool show_ram = metrics.enabled && metrics.show_ram;
   const bool show_ip = metrics.enabled && metrics.show_ip;
   const bool show_fan = metrics.enabled && metrics.show_fan;
@@ -176,7 +176,7 @@ inline Layout compute_overlay_layout(float screen_w, float screen_h,
   Slot by_metric[kMetricCount] = {
       {show_fps, kFpsWidth * scale, &out.overlay_fps_x, &out.overlay_fps_y},
       {show_cpu, cpu_w, &out.overlay_cpu_x, &out.overlay_cpu_y},
-      {show_gpu, kGpuWidth * scale, &out.overlay_gpu_x, &out.overlay_gpu_y},
+      {show_soc, kSocWidth * scale, &out.overlay_soc_x, &out.overlay_soc_y},
       {show_ram, kRamWidth * scale, &out.overlay_ram_x, &out.overlay_ram_y},
       {show_ip, kIpWidth * scale, &out.overlay_ip_x, &out.overlay_ip_y},
       {show_fan, kFanWidth * scale, &out.overlay_fan_x, &out.overlay_fan_y},

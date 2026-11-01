@@ -32,7 +32,7 @@ inline constexpr int kOverlayAlignCenter = 1;
 inline constexpr int kOverlayMetricCount = 6;
 inline constexpr int kOverlayMetricFps = 0;
 inline constexpr int kOverlayMetricCpu = 1;
-inline constexpr int kOverlayMetricGpu = 2;
+inline constexpr int kOverlayMetricSoc = 2;
 inline constexpr int kOverlayMetricMemory = 3;
 inline constexpr int kOverlayMetricIp = 4;
 inline constexpr int kOverlayMetricFan = 5;
@@ -46,7 +46,7 @@ inline constexpr int kOverlayFontPtMedium = 18;
 inline constexpr int kOverlayFontPtLarge = 24;
 
 inline constexpr std::array<int, kOverlayMetricCount> kOverlayOrderDefault = {
-    kOverlayMetricFps, kOverlayMetricCpu, kOverlayMetricGpu,
+    kOverlayMetricFps, kOverlayMetricCpu, kOverlayMetricSoc,
     kOverlayMetricMemory, kOverlayMetricIp, kOverlayMetricFan};
 
 inline int overlay_font_pt(int font_size) {
@@ -64,7 +64,7 @@ struct Settings {
   bool overlay_background = true;
   bool overlay_ram = true;
   bool overlay_cpu = true;
-  bool overlay_gpu = true;
+  bool overlay_soc = true;
   bool overlay_fps = true;
   bool overlay_ip = false;
   /** Show current fan duty (percent) on the overlay bar. */

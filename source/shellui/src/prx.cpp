@@ -326,13 +326,13 @@ int fps_overlay_only_main() {
 
   init_overlay_resource_names();
 
-  /* Fixed overlay config: text rows (FPS, CPU/GPU temps, RAM, VRAM, FAN, IP,
+  /* Fixed overlay config: text rows (FPS, CPU/SOC temps, RAM, VRAM, FAN, IP,
    * game title), top-left, no background panel. Font size is fixed in overlay::effective_font_pt(). */
   g_settings.overlay_enabled = true;
   g_settings.overlay_background = false;
   g_settings.overlay_fps = true;
   g_settings.overlay_cpu = true;
-  g_settings.overlay_gpu = true;
+  g_settings.overlay_soc = true;
   g_settings.overlay_ram = false; /* RAM/VRAM rows disabled for now */
   g_settings.overlay_ip = true;
   g_settings.overlay_fan = true;

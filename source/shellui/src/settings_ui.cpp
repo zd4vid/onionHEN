@@ -14,7 +14,7 @@ void apply_overlay_layout() {
   metrics.enabled = g_settings.overlay_enabled;
   metrics.show_fps = g_settings.overlay_fps;
   metrics.show_cpu = g_settings.overlay_cpu;
-  metrics.show_gpu = g_settings.overlay_gpu;
+  metrics.show_soc = g_settings.overlay_soc;
   metrics.show_ram = g_settings.overlay_ram;
   metrics.show_ip = g_settings.overlay_ip;
   metrics.show_fan = g_settings.overlay_fan;

@@ -14,7 +14,7 @@ static const std::string base64_chars =
 "0123456789+/";
 
 enum RemoveWidget {
-    REMOVE_GPU_OVERLAY,
+    REMOVE_SOC_OVERLAY,
     REMOVE_CPU_OVERLAY,
     REMOVE_RAM_OVERLAY,
     REMOVE_IP_OVERLAY,
@@ -24,7 +24,7 @@ enum RemoveWidget {
 };
 
 enum CreateWidget {
-    CREATE_GPU_OVERLAY,
+    CREATE_SOC_OVERLAY,
     CREATE_CPU_OVERLAY,
     CREATE_RAM_OVERLAY,
     CREATE_IP_OVERLAY,

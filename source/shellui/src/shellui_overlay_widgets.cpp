@@ -77,8 +77,8 @@ constexpr float kIpVal = 34.0f;
 constexpr float kTextR = 1.0f, kTextG = 1.0f, kTextB = 1.0f;
 /* color_cpu  = 66FF66FF — green */
 constexpr float kCpuR = kTextR, kCpuG = kTextG, kCpuB = kTextB;
-/* color_gpu  = B366FFFF — purple */
-constexpr float kGpuR = kTextR, kGpuG = kTextG, kGpuB = kTextB;
+/* color_soc  = B366FFFF — purple */
+constexpr float kSocR = kTextR, kSocG = kTextG, kSocB = kTextB;
 /* color_mem  = FFB34DFF — orange */
 constexpr float kMemR = kTextR, kMemG = kTextG, kMemB = kTextB;
 /* color_net  = 80B3FFFF — blue */
@@ -128,13 +128,13 @@ void append_cpu(std::vector<WidgetConfig> &out) {
   append_sep(out, "id_cpu_sep", x + kVal1 + 56.0f, y);
 }
 
-void append_gpu(std::vector<WidgetConfig> &out) {
-  const float x = g_overlay_layout.overlay_gpu_x;
-  const float y = g_overlay_layout.overlay_gpu_y;
-  push_label(out, "id_gpu_label", x + kLbl, y, "GPU", kGpuR, kGpuG, kGpuB);
-  push_label(out, "id_gpu_temp_value", x + kVal0, y, "--C", kValR, kValG, kValB);
-  push_label(out, "id_gpu_usage_value", x + kVal1, y, "--%", kValR, kValG, kValB);
-  append_sep(out, "id_gpu_sep", x + kVal1 + 56.0f, y);
+void append_soc(std::vector<WidgetConfig> &out) {
+  const float x = g_overlay_layout.overlay_soc_x;
+  const float y = g_overlay_layout.overlay_soc_y;
+  push_label(out, "id_soc_label", x + kLbl, y, "SOC", kSocR, kSocG, kSocB);
+  push_label(out, "id_soc_temp_value", x + kVal0, y, "--C", kValR, kValG, kValB);
+  push_label(out, "id_soc_usage_value", x + kVal1, y, "--%", kValR, kValG, kValB);
+  append_sep(out, "id_soc_sep", x + kVal1 + 56.0f, y);
 }
 
 void append_ram(std::vector<WidgetConfig> &out) {
@@ -165,7 +165,7 @@ void append_fan(std::vector<WidgetConfig> &out) {
 const std::vector<const char *> kAllOverlayNames = {
     kBgPanelName,
     "id_fps_label",      "id_fps_value",       "id_fps_sep",
-    "id_gpu_temp_value", "id_gpu_usage_value", "id_gpu_label", "id_gpu_sep",
+    "id_soc_temp_value", "id_soc_usage_value", "id_soc_label", "id_soc_sep",
     "id_cpu_label",      "id_cpu_temp_value",  "id_cpu_usage_value",
     "id_cpu_sep",
     "id_ram_label",      "id_ram_value",       "id_ram_sep",
@@ -242,7 +242,7 @@ void ensure_bg_panel(MonoObject *root) {
   const bool any =
       g_settings.overlay_enabled && g_settings.overlay_background &&
       (g_settings.overlay_cpu || g_settings.all_cpu_usage ||
-       g_settings.overlay_gpu || g_settings.overlay_ram ||
+       g_settings.overlay_soc || g_settings.overlay_ram ||
        g_settings.overlay_ip || g_settings.overlay_fps ||
        g_settings.overlay_fan);
   if (!any)
@@ -303,9 +303,9 @@ void RemoveGameWidget(RemoveWidget widget) {
   };
 
   switch (widget) {
-  case REMOVE_GPU_OVERLAY:
+  case REMOVE_SOC_OVERLAY:
     removeWidgets(
-        {"id_gpu_temp_value", "id_gpu_usage_value", "id_gpu_label", "id_gpu_sep"});
+        {"id_soc_temp_value", "id_soc_usage_value", "id_soc_label", "id_soc_sep"});
     break;
   case REMOVE_CPU_OVERLAY:
     removeWidgets({"id_cpu_label", "id_cpu_temp_value", "id_cpu_usage_value",
@@ -351,8 +351,8 @@ bool CreateGameWidget(CreateWidget widget) {
 
   std::vector<WidgetConfig> configs;
   switch (widget) {
-  case CREATE_GPU_OVERLAY:
-    append_gpu(configs);
+  case CREATE_SOC_OVERLAY:
+    append_soc(configs);
     break;
   case CREATE_CPU_OVERLAY:
     append_cpu(configs);
@@ -372,7 +372,7 @@ bool CreateGameWidget(CreateWidget widget) {
   case CREATE_ALL_OVERLAYS:
     append_fps(configs);
     append_cpu(configs);
-    append_gpu(configs);
+    append_soc(configs);
     append_ram(configs);
     append_ip(configs);
     append_fan(configs);

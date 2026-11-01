@@ -7,7 +7,7 @@ counter (/dev/dce, no game or kernel memory access), publishes it to
 draws two plain white text rows, top-left, regular weight, no background panel:
 
     FPS: 59.94
-    CPU: 43°C / GPU: 35°C
+    CPU: 43°C / SOC: 35°C
 
 Build: `export PS5_PAYLOAD_SDK=...; ./standalone_fps/build.sh`
 

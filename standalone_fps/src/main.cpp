@@ -4,7 +4,7 @@
  * kernel memory access), publishes the result to
  * /system_tmp/onionhen/fps_sample (seqlock mmap, see fps_sample.h) and injects
  * a small ShellUI module (the embedded fps_overlay ELF) into SceShellUI that
- * draws FPS / CPU / GPU as stacked rows on screen.
+ * draws FPS / CPU / SOC as stacked rows on screen.
  *
  * Load on a jailbroken console with an elfldr (e.g. port 9021).
  */
@@ -89,14 +89,14 @@ static bool wait_overlay_ready(pid_t pid, int timeout_ms) {
   return onion_ready_matches_pid(ONION_READY_FPS_OVERLAY, pid);
 }
 
-/* Seconds to wait before the first injection (default 2). OnionHEN spends
+/* Seconds to wait before the first injection (default 1). OnionHEN spends
  * 20+ s starting its services before its daemon touches SceShellUI; injecting within a few
  * milliseconds of being loaded from the on-console payload manager (a web page
  * that is still busy handing the payload over) hung the browser until the
  * system raised an error. Override with a plain number in
  * /data/onion_fps_delay (0 disables the wait). */
 static unsigned initial_inject_delay_sec() {
-  unsigned delay = 2;
+  unsigned delay = 1;
   FILE *f = std::fopen("/data/onion_fps_delay", "r");
   if (f) {
     unsigned v = 0;
