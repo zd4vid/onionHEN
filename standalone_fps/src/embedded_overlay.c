@@ -1,5 +1,4 @@
-/* Embeds the overlay ShellUI module (shellui built with
- * -DONIONHEN_FPS_OVERLAY_ONLY=ON). FPS_OVERLAY_ELF is the absolute path. */
+/* Embeds the overlay ShellUI module. FPS_OVERLAY_ELF is the absolute path. */
 #ifndef FPS_OVERLAY_ELF
 #error "FPS_OVERLAY_ELF must point to the overlay shellui.elf"
 #endif

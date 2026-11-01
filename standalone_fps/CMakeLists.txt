@@ -1,9 +1,8 @@
 # Standalone FPS counter + on-screen overlay.
 #
 # Builds, in one configure and without the daemon/util/kstuff/bootstrapper:
-#   build/internal/shellui.elf  intermediate: the overlay-only ShellUI module
-#                               (ONIONHEN_FPS_OVERLAY_ONLY). NOT a payload;
-#                               never load it on its own.
+#   build/internal/shellui.elf  intermediate: the overlay ShellUI module. NOT a
+#                               payload; never load it on its own.
 #   build/bin/fps_counter.elf   THE payload: safe scanout sampler + injector
 #                               that embeds shellui.elf and injects it into
 #                               SceShellUI. This is the only file to load.
@@ -21,7 +20,6 @@ endif()
 # Variables the repo's modules expect from the superbuild.
 get_filename_component(ONIONHEN_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
 set(PROJECT_ROOT "${ONIONHEN_ROOT}/source")
-set(ONIONHEN_THIRD_PARTY_DIR "${ONIONHEN_ROOT}/third_party")
 set(ONIONHEN_COMMON_DIR "${PROJECT_ROOT}/common")
 set(ONIONHEN_PS5_STUB_DIR "${PROJECT_ROOT}/platform/ps5/stubs")
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_ROOT}/cmake")
@@ -38,24 +36,9 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${ONIONHEN_OUT_BIN}")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${ONIONHEN_OUT_LIB}")
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${ONIONHEN_OUT_LIB}")
 
-set(ONIONHEN_GENERATED_INCLUDE_DIR "${CMAKE_BINARY_DIR}/generated/include")
-set(ONIONHEN_VERSION_HEADER "${ONIONHEN_GENERATED_INCLUDE_DIR}/onion/version.h")
-add_custom_target(onion_version
-  COMMAND "${CMAKE_COMMAND}"
-    "-DREPO_ROOT=${ONIONHEN_ROOT}"
-    "-DOUTPUT_FILE=${ONIONHEN_VERSION_HEADER}"
-    -P "${PROJECT_ROOT}/cmake/GenerateVersionHeader.cmake"
-  BYPRODUCTS "${ONIONHEN_VERSION_HEADER}"
-  COMMENT "Generating build version"
-  VERBATIM)
-
-include_directories(BEFORE "${ONIONHEN_GENERATED_INCLUDE_DIR}")
 include_directories("${PROJECT_ROOT}/include")
 include_directories(SYSTEM "${PS5_PAYLOAD_SDK}" "${PS5_PAYLOAD_SDK}/include")
 link_directories("${ONIONHEN_OUT_LIB}" "${ONIONHEN_PS5_STUB_DIR}")
-
-# ShellUI module in overlay-only mode (see source/shellui/src/prx.cpp).
-set(ONIONHEN_FPS_OVERLAY_ONLY ON CACHE BOOL "" FORCE)
 
 # Libraries shellui and the injector need (same order as source/CMakeLists.txt).
 foreach(lib libonion_proc libonion_platform libonion_detour libonion_ready

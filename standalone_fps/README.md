@@ -3,7 +3,7 @@
 `fps_counter.elf` is the **only payload to load**. It samples the scanout
 counter (/dev/dce, no game or kernel memory access), publishes it to
 `/system_tmp/onionhen/fps_sample`, and injects an overlay-only ShellUI module
-(built with `ONIONHEN_FPS_OVERLAY_ONLY` and embedded in `fps_counter.elf`) that
+(embedded in `fps_counter.elf`) that
 draws two plain white text rows, top-left, regular weight, no background panel:
 
     FPS: 59.94
