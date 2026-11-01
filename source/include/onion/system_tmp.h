@@ -18,16 +18,5 @@
 #define ONION_SYSTEM_TMP_READY_ROOT ONION_SYSTEM_TMP_ROOT "/ready"
 #define ONION_SYSTEM_TMP_PID_ROOT ONION_SYSTEM_TMP_ROOT "/pid"
 
-#define ONION_SYSTEM_TMP_CRIT_SOCKET ONION_SYSTEM_TMP_IPC_ROOT "/crit_service"
-#define ONION_SYSTEM_TMP_UTIL_SOCKET ONION_SYSTEM_TMP_IPC_ROOT "/util_service"
-#define ONION_SYSTEM_TMP_PLUGIN_SOCKET ONION_SYSTEM_TMP_IPC_ROOT "/plugin_service"
-#define ONION_SYSTEM_TMP_SHELLUI_PLUGIN_SOCKET                                  \
-  ONION_SYSTEM_TMP_IPC_ROOT "/shellui_plugin_bridge"
 
-#define ONION_SYSTEM_TMP_ELFLDR_STATE                                      \
-  ONION_SYSTEM_TMP_PID_ROOT "/onion_elfldr_9020.PID"
-#define ONION_SYSTEM_TMP_ELFLDR_BUSY                                       \
-  ONION_SYSTEM_TMP_PID_ROOT "/onion_elfldr_9020.busy"
-#define ONION_SYSTEM_TMP_APP_LAUNCHED ONION_SYSTEM_TMP_ROOT "/app_launched"
-#define ONION_SYSTEM_TMP_PATCH_PLUGIN ONION_SYSTEM_TMP_ROOT "/patch_plugin"
 #define ONION_SYSTEM_TMP_FPS_SAMPLE ONION_SYSTEM_TMP_ROOT "/fps_sample"

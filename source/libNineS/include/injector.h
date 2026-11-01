@@ -16,8 +16,6 @@
 #include <pthread.h>
 
 
-#define TARGET_SPRX "/system_ex/common_ex/lib/libSceNKWebKit.sprx"
-#define TARGET_SPRX_BASENAME "libSceNKWebKit.sprx"
 
 
 typedef struct __scefunctions

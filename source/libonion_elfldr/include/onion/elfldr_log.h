@@ -33,10 +33,6 @@ along with this program; see the file COPYING. If not, see
     klog_puts(s);					\
   }
 
-#define LOG_PRINTF(s, ...) {				\
-    printf(s, __VA_ARGS__);				\
-    klog_printf(s, __VA_ARGS__);			\
-  }
 
 #define LOG_PERROR(s) {							\
     printf("%s:%d:%s: %s\n", __FILE__, __LINE__, s, strerror(errno));	\

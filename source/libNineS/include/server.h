@@ -9,4 +9,3 @@
 #include <netinet/in.h>
 #include <unistd.h>
 
-#define SOCK_BUFF_SIZE 0x1000

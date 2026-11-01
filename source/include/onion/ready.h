@@ -24,9 +24,6 @@ extern "C" {
 #define ONION_READY_ROOT ONION_SYSTEM_TMP_READY_ROOT
 
 /* Well-known service names (startup orchestration) */
-#define ONION_READY_UTIL "util"
-#define ONION_READY_KSTUFF "kstuff"
-#define ONION_READY_DAEMON "daemon"
 #define ONION_READY_TOOLBOX "toolbox"
 /* Marker of the standalone FPS overlay module inside SceShellUI. Deliberately
  * not ONION_READY_TOOLBOX: the OnionHEN daemon treats that marker as "toolbox
@@ -39,8 +36,6 @@ extern "C" {
  *   fps_overlay  — legacy only; cleared on boot (FPS inject removed)
  *   util_booted  — util finished at least one full start (mid-session restart detect)
  */
-#define ONION_FLAG_FPS_OVERLAY "fps_overlay"
-#define ONION_FLAG_UTIL_BOOTED "util_booted"
 
 /* Publish / clear / query. name is a short token (no path separators). */
 

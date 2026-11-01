@@ -17,8 +17,6 @@ along with this program; see the file COPYING. If not, see
 #pragma once
 
 #include <stdint.h>
-#define IOVEC_ENTRY(x) {x ? (char *)x : 0, x ? strlen(x) + 1 : 0}
-#define IOVEC_SIZE(x) (sizeof(x) / sizeof(struct iovec))
 
 
 typedef unsigned int   guint;
@@ -293,12 +291,6 @@ extern "C" {
 
 
 #define mono_array_addr(array,type,index) ((type*)mono_array_addr_with_size ((array), sizeof (type), (index)))
-#define mono_array_get(array,type,index) ( *(type*)mono_array_addr ((array), type, (index)) ) 
-#define mono_array_set(array,type,index,value)	\
-	do {	\
-		type *__p = (type *) mono_array_addr ((array), type, (index));	\
-		*__p = (value);	\
-	} while (0)
 
 #ifdef __cplusplus
 }

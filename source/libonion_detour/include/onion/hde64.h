@@ -40,27 +40,8 @@
 #define F_ERROR_LENGTH  0x00004000
 #define F_ERROR_LOCK    0x00008000
 #define F_ERROR_OPERAND 0x00010000
-#define F_PREFIX_REPNZ  0x01000000
-#define F_PREFIX_REPX   0x02000000
-#define F_PREFIX_REP    0x03000000
-#define F_PREFIX_66     0x04000000
-#define F_PREFIX_67     0x08000000
-#define F_PREFIX_LOCK   0x10000000
-#define F_PREFIX_SEG    0x20000000
 #define F_PREFIX_REX    0x40000000
-#define F_PREFIX_ANY    0x7f000000
 
-#define PREFIX_SEGMENT_CS   0x2e
-#define PREFIX_SEGMENT_SS   0x36
-#define PREFIX_SEGMENT_DS   0x3e
-#define PREFIX_SEGMENT_ES   0x26
-#define PREFIX_SEGMENT_FS   0x64
-#define PREFIX_SEGMENT_GS   0x65
-#define PREFIX_LOCK         0xf0
-#define PREFIX_REPNZ        0xf2
-#define PREFIX_REPX         0xf3
-#define PREFIX_OPERAND_SIZE 0x66
-#define PREFIX_ADDRESS_SIZE 0x67
 
 #pragma pack(push,1)
 

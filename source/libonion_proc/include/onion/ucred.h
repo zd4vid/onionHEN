@@ -29,7 +29,6 @@ extern "C" {
 #define DEBUG_AUTHID 0x4800000000000006
 /** SceTracer-style authid — only value the kernel accepts for ptrace PT_*. */
 #define PTRACE_AUTHID 0x4800000000010003
-#define UCRED_AUTHID_KERNEL_OFFSET
 
 /**
  * Set this process ucred authid to PTRACE_AUTHID for ptrace inject/attach.

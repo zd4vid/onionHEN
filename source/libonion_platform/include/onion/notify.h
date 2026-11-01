@@ -30,7 +30,6 @@ extern "C" {
 
 /* Notification service reads this user-visible path. Config/payload stay
  * under /data/OnionHEN. */
-#define ONION_NOTIFY_ICON_PATH "/user/data/OnionHEN/onionhen.png"
 
 /** Kernel/userland toast send — matches sceKernelSendNotificationRequest. */
 typedef int32_t (*onion_notify_send_fn)(int32_t device, void *req, size_t size,

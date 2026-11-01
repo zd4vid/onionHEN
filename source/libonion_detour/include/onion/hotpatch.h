@@ -9,7 +9,6 @@
 extern "C" {
 #endif
 
-#define ONION_X64_ABSOLUTE_JUMP_SIZE 14u
 #define ONION_X64_ATOMIC_PATCH_SIZE 16u
 
 struct onion_x64_atomic_patch {

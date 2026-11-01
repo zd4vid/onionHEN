@@ -19,7 +19,6 @@ along with this program; see the file COPYING. If not, see
 #include <sys/types.h>
 #include "monodef.h"
 
-#define SCE_OK 0
 
 
 typedef struct
@@ -40,67 +39,21 @@ typedef struct
     char uri[1024];			 // 0x42D
     char unkstr[1024];		 // 0x82D
 } OrbisNotificationRequest;	 // Size = 0xC30
-#define SCE_NET_CTL_STATE_DISCONNECTED		0
-#define SCE_NET_CTL_STATE_CONNECTING		1
-#define SCE_NET_CTL_STATE_IPOBTAINING		2
-#define SCE_NET_CTL_STATE_IPOBTAINED		3
 
 /* event type */
-#define SCE_NET_CTL_EVENT_TYPE_DISCONNECTED				1
-#define SCE_NET_CTL_EVENT_TYPE_DISCONNECT_REQ_FINISHED	2
-#define SCE_NET_CTL_EVENT_TYPE_IPOBTAINED				3
 
 /* info code */
-#define SCE_NET_CTL_INFO_DEVICE				1
-#define SCE_NET_CTL_INFO_ETHER_ADDR			2
-#define SCE_NET_CTL_INFO_MTU				3
-#define SCE_NET_CTL_INFO_LINK				4
-#define SCE_NET_CTL_INFO_BSSID				5
-#define SCE_NET_CTL_INFO_SSID				6
-#define SCE_NET_CTL_INFO_WIFI_SECURITY		7
-#define SCE_NET_CTL_INFO_RSSI_DBM			8
-#define SCE_NET_CTL_INFO_RSSI_PERCENTAGE	9
-#define SCE_NET_CTL_INFO_CHANNEL			10
-#define SCE_NET_CTL_INFO_IP_CONFIG			11
-#define SCE_NET_CTL_INFO_DHCP_HOSTNAME		12
-#define SCE_NET_CTL_INFO_PPPOE_AUTH_NAME	13
 #define SCE_NET_CTL_INFO_IP_ADDRESS			14
-#define SCE_NET_CTL_INFO_NETMASK			15
-#define SCE_NET_CTL_INFO_DEFAULT_ROUTE		16
-#define SCE_NET_CTL_INFO_PRIMARY_DNS		17
-#define SCE_NET_CTL_INFO_SECONDARY_DNS		18
-#define SCE_NET_CTL_INFO_HTTP_PROXY_CONFIG	19
-#define SCE_NET_CTL_INFO_HTTP_PROXY_SERVER	20
-#define SCE_NET_CTL_INFO_HTTP_PROXY_PORT	21
-#define SCE_NET_CTL_INFO_RESERVED1			22
-#define SCE_NET_CTL_INFO_RESERVED2			23
 
 /* device */
-#define SCE_NET_CTL_DEVICE_WIRED		0
-#define SCE_NET_CTL_DEVICE_WIRELESS	 	1
 
 /* link */
-#define SCE_NET_CTL_LINK_DISCONNECTED	0
-#define SCE_NET_CTL_LINK_CONNECTED		1
 
 /* wifi_security */
-#define SCE_NET_CTL_WIFI_SECURITY_NOAUTH			0
-#define SCE_NET_CTL_WIFI_SECURITY_WEP				1
-#define SCE_NET_CTL_WIFI_SECURITY_WPAPSK_WPA2PSK	2
-#define SCE_NET_CTL_WIFI_SECURITY_WPAPSK_TKIP		3
-#define SCE_NET_CTL_WIFI_SECURITY_WPAPSK_AES		4
-#define SCE_NET_CTL_WIFI_SECURITY_WPA2PSK_TKIP		5
-#define SCE_NET_CTL_WIFI_SECURITY_WPA2PSK_AES		6
-#define SCE_NET_CTL_WIFI_SECURITY_UNSUPPORTED		7
 
 /* ip_config */
-#define SCE_NET_CTL_IP_DHCP	 	0
-#define SCE_NET_CTL_IP_STATIC	1
-#define SCE_NET_CTL_IP_PPPOE	2
 
 /* http_proxy_config */
-#define SCE_NET_CTL_HTTP_PROXY_OFF	0
-#define SCE_NET_CTL_HTTP_PROXY_ON	1
 
 /*
  * SceNetCtlInfo / SceNetEtherAddr / the SCE_NET_CTL_*_LEN constants and the
@@ -110,13 +63,10 @@ typedef struct
 #include <ps5/net_ctl.h>
 
 // Token: 0x040002CA RID: 714
-#define SCE_NET_SHOW_BUFFER_SIZE 8192
 
 // Token: 0x040002CB RID: 715
-#define SCE_NET_SHOW_NETSTAT_BUFFER_SIZE 65536
 
 // Token: 0x040002CC RID: 716
-#define SCE_NET_ADDR_STR_SIZE 18
 
 // Token: 0x02000064 RID: 100
 
