@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Builds the standalone FPS payload. The ONLY deliverable is
-#   standalone_fps/build/bin/fps_counter.elf
+#   standalone_fps/build/bin/overlay.elf
 # (the overlay module is embedded in it). Intermediates, including the overlay
 # shellui.elf, are under standalone_fps/build/internal/ and are not payloads.
 set -euo pipefail
 : "${PS5_PAYLOAD_SDK:?export PS5_PAYLOAD_SDK=/path/to/ps5-payload-sdk}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD="$HERE/build"
-OUT="$BUILD/bin/fps_counter.elf"
+OUT="$BUILD/bin/overlay.elf"
 
-# Drop leftovers from older layouts so nothing but fps_counter.elf can be picked up.
-rm -f "$BUILD/bin/shellui.elf" "$OUT"
+# Drop leftovers from older layouts so nothing but overlay.elf can be picked up.
+rm -f "$BUILD/bin/shellui.elf" "$BUILD/bin/fps_counter.elf" "$OUT"
 
 "$PS5_PAYLOAD_SDK/bin/prospero-cmake" -S "$HERE" -B "$BUILD" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release -DPS5_PAYLOAD_SDK="$PS5_PAYLOAD_SDK" \

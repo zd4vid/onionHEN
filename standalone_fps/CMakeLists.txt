@@ -3,7 +3,7 @@
 # Builds, in one configure and without the daemon/util/kstuff/bootstrapper:
 #   build/internal/shellui.elf  intermediate: the overlay ShellUI module. NOT a
 #                               payload; never load it on its own.
-#   build/bin/fps_counter.elf   THE payload: safe scanout sampler + injector
+#   build/bin/overlay.elf   THE payload: safe scanout sampler + injector
 #                               that embeds shellui.elf and injects it into
 #                               SceShellUI. This is the only file to load.
 # All code is reused from ../source so it stays in sync with the fork.
@@ -25,7 +25,7 @@ set(ONIONHEN_PS5_STUB_DIR "${PROJECT_ROOT}/platform/ps5/stubs")
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_ROOT}/cmake")
 include(OnionTarget)
 
-# Layout: build/bin/ holds ONLY fps_counter.elf (the one payload to load).
+# Layout: build/bin/ holds ONLY overlay.elf (the one payload to load).
 # Everything else, including the overlay shellui.elf that gets embedded into
 # it, is an intermediate and lives under build/internal/.
 set(ONIONHEN_OUT_LIB "${CMAKE_BINARY_DIR}/lib")
@@ -48,7 +48,7 @@ endforeach()
 add_subdirectory("${PROJECT_ROOT}/shellui" shellui)
 
 # ---------------------------------------------------------------------------
-# fps_counter.elf
+# overlay.elf
 # ---------------------------------------------------------------------------
 set(FPS_FLAGS "${ONION_PS5_TARGET_FLAGS_MARCH} -fPIC -fPIE -fstack-protector-all")
 set(CMAKE_C_FLAGS "${FPS_FLAGS} -Wall -Werror -Wno-keyword-macro")
@@ -67,7 +67,7 @@ add_executable(fps_counter
   "${FPS_LIB}/source/fps_publish.cpp"
 )
 set_target_properties(fps_counter PROPERTIES
-  OUTPUT_NAME "fps_counter.elf"
+  OUTPUT_NAME "overlay.elf"
   RUNTIME_OUTPUT_DIRECTORY "${FPS_FINAL_BIN_DIR}")
 
 # shim/ first so main.cpp's daemon_ops.hpp / globalconf.hpp / <onion/settings.hpp>
