@@ -28,12 +28,9 @@ extern "C" struct dirent* readdir(DIR*);
 void notify(const char* text, ...);
 
 extern void (*OnRender_orig)(MonoObject* instance);
-extern void (*Orig_ReloadApp)(MonoString* str);
-extern MonoImage * react_common_img;
 
 /* =============================== mono utils =============================================================================*/
 std::string base64_decode(const std::string &encoded_string);
-void ReloadRNPSApp(const char* title_id);
 
 void Patch_Main_thread_Check(MonoImage * image_core);
 uint64_t Get_Address_of_Method(MonoImage* Assembly_Image, const char* Name_Space, const char* Class_Name, const char* Method_Name, int Param_Count);
@@ -44,9 +41,6 @@ void apply_overlay_layout();
 void apply_overlay_layout(float screen_w, float screen_h);
 /** Read both logical canvas dimensions from a ShellUI RootWidget. */
 bool resolve_root_dimensions(MonoObject *root, float *screen_w, float *screen_h);
-
-/** Drain the one-shot Home reload; call only from UI thread after hooks ready. */
-void shellui_poll_home_reload(void);
 
 template <typename result>
 result Get_Property(MonoClass* Klass, MonoObject* Instance, const char* Property_Name)
@@ -189,7 +183,6 @@ result Invoke(MonoImage* Assembly_Image, MonoClass* klass, MonoObject* Instance,
 }
 
 
-extern int (*__sys_regmgr_call)(long, long, int*, int*, long);
 
 /* ================================= HOOKED MONO FUNCS ============================================= */
 #include "shellui_state.hpp"

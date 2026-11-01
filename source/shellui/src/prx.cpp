@@ -50,20 +50,15 @@ std::string appsystem_dll;
 MonoImage* pui_img = nullptr;
 MonoImage* AppSystem_img = nullptr;
 MonoObject* Game = nullptr;
-MonoImage* react_common_img = nullptr;
 
 bool hooked = false;
 bool has_hv_bypass = false;
 
-extern "C" long ptr_syscall = 0;
-
 void (*OnRender_orig)(MonoObject* instance);
 MonoObject* rootWidget = nullptr;
 MonoObject* font = nullptr;
-void (*Orig_ReloadApp)(MonoString* str) = nullptr;
 
-// Defined in prx_install / prx_overlay
-void ReloadApp(MonoString* str);
+// Defined in prx_overlay
 void OnRender_Hook(MonoObject* instance);
 
 // ---------------------------------------------------------------------------
@@ -135,14 +130,8 @@ MonoImage* require_dll(const char* name) {
 
 bool resolve_native_symbols(pid_t pid) {
   int libkernelsys = get_module_handle(pid, "libkernel_sys.sprx");
-  KERNEL_DLSYM(libkernelsys, sceKernelDebugOutText);
-  KERNEL_DLSYM(libkernelsys, sceKernelMkdir);
-  KERNEL_DLSYM(libkernelsys, scePthreadCreate);
   KERNEL_DLSYM(libkernelsys, sceKernelMprotect);
   KERNEL_DLSYM(libkernelsys, sceKernelSendNotificationRequest);
-  KERNEL_DLSYM(libkernelsys, sceKernelGetProsperoSystemSwVersion);
-  KERNEL_DLSYM(libkernelsys, sceKernelGetAppInfo);
-  KERNEL_DLSYM(libkernelsys, sceKernelGetProcessName);
   KERNEL_DLSYM(libkernelsys, sceKernelGetCurrentFanDuty);
 
   /* libonion_platform must not CALL sceKernelSendNotificationRequest by name —
@@ -156,50 +145,6 @@ bool resolve_native_symbols(pid_t pid) {
         static_cast<int>(size), blocking);
   });
 
-  KERNEL_DLSYM(libSceKernelHandle, sceKernelJitCreateSharedMemory);
-  KERNEL_DLSYM(libSceKernelHandle, sceKernelJitCreateAliasOfSharedMemory);
-  KERNEL_DLSYM(libSceKernelHandle, sceKernelJitMapSharedMemory);
-  KERNEL_DLSYM(libSceKernelHandle, ioctl);
-  KERNEL_DLSYM(libSceKernelHandle, __sys_regmgr_call);
-
-  // Point ptr_syscall at the syscall instruction inside getpid.
-  // Variable name must be `getpid` for KERNEL_DLSYM's #sym string.
-  {
-    static __attribute__((used)) long getpid = 0;
-    KERNEL_DLSYM(libSceKernelHandle, getpid);
-    ptr_syscall = getpid + kSyscallInstrOffset;
-  }
-
-  int shellui_util = get_module_handle(pid, "libSceShellUIUtil.sprx");
-  KERNEL_DLSYM(shellui_util, sceShellUIUtilLaunchByUri);
-  KERNEL_DLSYM(shellui_util, sceShellUIUtilInitialize);
-
-  int system_service = get_module_handle(pid, "libSceSystemService.sprx");
-  KERNEL_DLSYM(system_service, sceSystemServiceGetAppIdOfRunningBigApp);
-  KERNEL_DLSYM(system_service, sceSystemServiceParamGetInt);
-  KERNEL_DLSYM(system_service, sceSystemServiceGetAppTitleId);
-  {
-    void* sceSystemServiceLaunchApp = nullptr;
-    KERNEL_DLSYM(system_service, sceSystemServiceLaunchApp);
-    if (!sceSystemServiceLaunchApp)
-      LOG_ERROR("Failed to resolve sceSystemServiceLaunchApp");
-  }
-
-  int reg = get_module_handle(pid, "libSceRegMgr.sprx");
-  KERNEL_DLSYM(reg, sceRegMgrGetInt);
-
-  int remoteplay = get_module_handle(pid, "libSceRemoteplay.sprx");
-  LOG_DEBUG("Remote Play module handle: %d", remoteplay);
-  KERNEL_DLSYM(remoteplay, sceRemoteplayInitialize);
-  KERNEL_DLSYM(remoteplay, sceRemoteplayGeneratePinCode);
-  KERNEL_DLSYM(remoteplay, sceRemoteplayConfirmDeviceRegist);
-  KERNEL_DLSYM(remoteplay, sceRemoteplayNotifyPinCodeError);
-  LOG_DEBUG("Remote Play symbols: init=%p pin=%p confirm=%p invalidate=%p",
-            reinterpret_cast<void *>(sceRemoteplayInitialize),
-            reinterpret_cast<void *>(sceRemoteplayGeneratePinCode),
-            reinterpret_cast<void *>(sceRemoteplayConfirmDeviceRegist),
-            reinterpret_cast<void *>(sceRemoteplayNotifyPinCodeError));
-
   return true;
 }
 
@@ -210,68 +155,31 @@ bool resolve_native_symbols(pid_t pid) {
 bool resolve_mono_symbols(pid_t pid) {
   int libmono = get_module_handle(pid, "libmonosgen-2.0.sprx");
 
-  KERNEL_DLSYM(libmono, mono_object_to_string);
   KERNEL_DLSYM(libmono, mono_get_root_domain);
   KERNEL_DLSYM(libmono, mono_property_get_get_method);
   KERNEL_DLSYM(libmono, mono_property_get_set_method);
   KERNEL_DLSYM(libmono, mono_class_get_property_from_name);
   KERNEL_DLSYM(libmono, mono_class_from_name);
-  KERNEL_DLSYM(libmono, mono_raise_exception);
   KERNEL_DLSYM(libmono, mono_runtime_invoke);
-  KERNEL_DLSYM(libmono, mono_array_new);
   KERNEL_DLSYM(libmono, mono_string_new);
-  KERNEL_DLSYM(libmono, mono_jit_set_aot_only);
-  KERNEL_DLSYM(libmono, mono_jit_init_version);
   KERNEL_DLSYM(libmono, mono_object_new);
   KERNEL_DLSYM(libmono, mono_object_unbox);
-  KERNEL_DLSYM(libmono, mono_set_dirs);
   KERNEL_DLSYM(libmono, mono_compile_method);
   KERNEL_DLSYM(libmono, mono_assembly_get_image);
   KERNEL_DLSYM(libmono, mono_domain_assembly_open);
-  KERNEL_DLSYM(libmono, mono_get_byte_class);
   KERNEL_DLSYM(libmono, mono_thread_attach);
-  KERNEL_DLSYM(libmono, mono_object_get_class);
-  KERNEL_DLSYM(libmono, mono_vtable_get_static_field_data);
   KERNEL_DLSYM(libmono, mono_class_get_method_from_name);
-  KERNEL_DLSYM(libmono, mono_class_get_field_from_name);
-  KERNEL_DLSYM(libmono, mono_field_get_value);
-  KERNEL_DLSYM(libmono, mono_aot_get_method);
-  KERNEL_DLSYM(libmono, mono_field_static_set_value);
-  KERNEL_DLSYM(libmono, mono_assembly_setrootdir);
-  KERNEL_DLSYM(libmono, mono_free);
-  KERNEL_DLSYM(libmono, mono_gchandle_new);
-  KERNEL_DLSYM(libmono, mono_gchandle_free); /* optional; null if missing */
-  KERNEL_DLSYM(libmono, mono_image_open_from_data);
   KERNEL_DLSYM(libmono, mono_runtime_object_init);
   KERNEL_DLSYM(libmono, mono_domain_get);
-  KERNEL_DLSYM(libmono, mono_assembly_load_from);
-  KERNEL_DLSYM(libmono, mono_method_desc_new);
-  KERNEL_DLSYM(libmono, mono_method_desc_search_in_class);
-  KERNEL_DLSYM(libmono, mono_method_desc_free);
-  KERNEL_DLSYM(libmono, mono_object_new_specific);
-  KERNEL_DLSYM(libmono, mono_thread_detach);
-  KERNEL_DLSYM(libmono, mono_array_addr_with_size);
-  KERNEL_DLSYM(libmono, mono_thread_current);
-  KERNEL_DLSYM(libmono, mono_class_vtable);
-  KERNEL_DLSYM(libmono, mono_domain_unload);
-  KERNEL_DLSYM(libmono, mono_string_to_utf8);
 
   const bool ok =
-      mono_object_to_string && mono_get_root_domain && mono_property_get_get_method &&
+      mono_get_root_domain && mono_property_get_get_method &&
       mono_property_get_set_method && mono_class_get_property_from_name &&
-      mono_class_from_name && mono_runtime_invoke && mono_array_new && mono_string_new &&
-      mono_jit_set_aot_only && mono_jit_init_version && mono_object_new &&
-      mono_object_unbox && mono_set_dirs && mono_compile_method &&
-      mono_assembly_get_image && mono_domain_assembly_open && mono_get_byte_class &&
-      mono_thread_attach && mono_object_get_class && mono_vtable_get_static_field_data &&
-      mono_class_get_method_from_name && mono_class_get_field_from_name &&
-      mono_aot_get_method && mono_field_static_set_value && mono_assembly_setrootdir &&
-      mono_free && mono_gchandle_new && mono_image_open_from_data &&
-      mono_runtime_object_init && mono_domain_get && mono_assembly_load_from &&
-      mono_method_desc_new && mono_method_desc_search_in_class && mono_method_desc_free &&
-      mono_object_new_specific && mono_thread_detach && mono_array_addr_with_size &&
-      mono_thread_current && mono_class_vtable && mono_domain_unload &&
-      mono_string_to_utf8;
+      mono_class_from_name && mono_runtime_invoke && mono_string_new &&
+      mono_object_new && mono_object_unbox && mono_compile_method &&
+      mono_assembly_get_image && mono_domain_assembly_open && mono_thread_attach &&
+      mono_class_get_method_from_name &&
+      mono_runtime_object_init && mono_domain_get;
 
   if (!ok)
     LOG_ERROR("Failed to resolve mono symbols");
@@ -362,25 +270,8 @@ bool install_mono_hook(const MonoHookSpec& h) {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 8: process query hooks + keep-alive
+// Phase 8: keep-alive
 // ---------------------------------------------------------------------------
-
-void setup_proc_hooks() {
-  onion_proc_set_sce_hooks(
-      [](int pid, char* name) -> int {
-        return sceKernelGetProcessName ? sceKernelGetProcessName(pid, name) : -1;
-      },
-      [](pid_t pid, void* info) -> int {
-        return sceKernelGetAppInfo
-                   ? sceKernelGetAppInfo(pid, static_cast<app_info_t*>(info))
-                   : -1;
-      },
-      []() -> int {
-        return sceSystemServiceGetAppIdOfRunningBigApp
-                   ? sceSystemServiceGetAppIdOfRunningBigApp()
-                   : -1;
-      });
-}
 
 void run_keep_alive() {
   // Publish the initialized SceShellUI process instance.  The daemon keeps
@@ -491,7 +382,6 @@ int fps_overlay_only_main() {
 
   set_proc_authid(pid, auth.old_authid);
   auth.release();
-  setup_proc_hooks();
   shellui_hooks_publish_ready();
   hooked = true;
   run_keep_alive();

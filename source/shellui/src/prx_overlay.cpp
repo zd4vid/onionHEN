@@ -140,9 +140,6 @@ constexpr uint64_t kInitBackoffMaxNs = 10000000000ull; /* 10 s */
 /* Every value (FPS, temps, RAM/VRAM, fan, CPU usage, IP) refreshes together every
  * 1 s of wall time, independent of the frame rate. */
 constexpr uint64_t kOverlayUpdateIntervalNs = 1000000000ull;
-#ifndef ONIONHEN_FPS_OVERLAY_ONLY
-constexpr int kFpsUpdateIntervalFrames = 2; /* full build: FPS refreshes faster */
-#endif
 
 constexpr int kClockIdRealtime = 4;
 constexpr int kVmSystem = 1;
@@ -197,22 +194,7 @@ void set_label_layout(const char *widget_name, float margin_left,
   Set_Property(label_cls, label, "NumberOfLines", 1);
 }
 
-#ifndef ONIONHEN_FPS_OVERLAY_ONLY /* standalone build has no background panel */
-/** Resize/move the translucent background panel to wrap the stacked block. */
-void set_bg_panel_rect(float x, float y, float w, float h) {
-  MonoObject *panel = find_label("id_onion_overlay_bg");
-  if (!panel)
-    return;
-  MonoClass *panel_cls =
-      mono_class_from_name(pui_img, "Sce.PlayStation.PUI.UI2", "Panel");
-  Set_Property(panel_cls, panel, "X", x);
-  Set_Property(panel_cls, panel, "Y", y);
-  Set_Property(panel_cls, panel, "Width", w);
-  Set_Property(panel_cls, panel, "Height", h);
-}
-#endif
 
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
 /* "Name / TITLEID" of the running game, empty on the home screen (no row). */
 char g_overlay_title[96] = {};
 
@@ -328,138 +310,6 @@ void layout_bar_labels(const char *fps_str, const char *cpu_temp,
     set_label_text(rows[r].id, rows[r].text);
   }
 }
-#else
-/**
- * Stacked layout: one metric group per row, values lined up in columns.
- *
- *   FPS  60
- *   CPU  54C  12%
- *   GPU  61C  40%
- *
- * The block is placed left/center/right by overlay.align and top/bottom by
- * overlay.pos. Labels use PositionType + margins layout.
- */
-void layout_bar_labels(const char *fps_str, const char *cpu_temp,
-                       const char *cpu_usage, const char *gpu_temp,
-                       const char *gpu_usage, const char *ram_str,
-                       const char *ip_str, const char *fan_str) {
-  const float font_pt = static_cast<float>(onion::overlay::effective_font_pt(
-      onion::overlay_font_pt(g_settings.overlay_font_size)));
-  const float scale = font_pt / onion::overlay::kRefFontSize;
-  const float kPairGap = 10.0f * scale; /* label column -> value column */
-  const float kValGap = 10.0f * scale;  /* value column -> second value */
-  const float kPad = 8.0f * scale;      /* background padding */
-  constexpr float kOff = -4096.0f;
-
-  struct GroupSpec {
-    bool on;
-    const char *id_l;
-    const char *lab;
-    const char *id_v0;
-    const char *v0;
-    const char *id_v1;
-    const char *v1;
-  };
-  GroupSpec specs[onion::kOverlayMetricCount]{};
-  specs[onion::kOverlayMetricFps] = {g_settings.overlay_fps && fps_str,
-                                     "id_fps_label", "FPS", "id_fps_value",
-                                     fps_str, nullptr, nullptr};
-  specs[onion::kOverlayMetricCpu] = {
-      (g_settings.overlay_cpu || g_settings.all_cpu_usage) && cpu_temp,
-      "id_cpu_label", "CPU", "id_cpu_temp_value", cpu_temp,
-      "id_cpu_usage_value", cpu_usage};
-  specs[onion::kOverlayMetricGpu] = {g_settings.overlay_gpu && gpu_temp,
-                                     "id_gpu_label", "GPU", "id_gpu_temp_value",
-                                     gpu_temp, "id_gpu_usage_value", gpu_usage};
-  specs[onion::kOverlayMetricMemory] = {g_settings.overlay_ram && ram_str,
-                                        "id_ram_label", "RAM", "id_ram_value",
-                                        ram_str, nullptr, nullptr};
-  specs[onion::kOverlayMetricIp] = {g_settings.overlay_ip && ip_str,
-                                    "id_ip_label", "IP", "id_ip_value", ip_str,
-                                    nullptr, nullptr};
-  specs[onion::kOverlayMetricFan] = {g_settings.overlay_fan && fan_str,
-                                     "id_fan_label", "FAN", "id_fan_value",
-                                     fan_str, nullptr, nullptr};
-
-  auto order = g_settings.overlay_order;
-  onion::overlay_normalize_order(order);
-  GroupSpec rows[onion::kOverlayMetricCount];
-  int nrows = 0;
-  for (int metric : order) {
-    if (metric < 0 || metric >= onion::kOverlayMetricCount)
-      continue;
-    if (!specs[metric].on || !specs[metric].v0 || !specs[metric].v0[0])
-      continue;
-    rows[nrows++] = specs[metric];
-  }
-  if (nrows == 0)
-    return;
-
-  /* Column widths: widest label, widest first value, widest second value. */
-  float label_w = 0.f, v0_w = 0.f, v1_w = 0.f;
-  bool any_v1 = false;
-  for (int r = 0; r < nrows; ++r) {
-    label_w = std::max(label_w,
-                       onion::overlay::estimate_text_width(rows[r].lab, font_pt));
-    v0_w = std::max(v0_w,
-                    onion::overlay::estimate_text_width(rows[r].v0, font_pt));
-    if (rows[r].id_v1 && rows[r].v1 && rows[r].v1[0]) {
-      any_v1 = true;
-      v1_w = std::max(
-          v1_w, onion::overlay::estimate_text_width(rows[r].v1, font_pt));
-    }
-  }
-  const float block_w =
-      label_w + kPairGap + v0_w + (any_v1 ? kValGap + v1_w : 0.f);
-
-  const float screen_w = g_overlay_layout.bar_w;
-  if (screen_w <= 1.0f)
-    return;
-  const float x0 = onion::overlay::pack_origin(
-      screen_w, block_w,
-      onion::overlay::bar_align_from_value(g_settings.overlay_align));
-
-  const float line_h = g_overlay_layout.bar_h;
-  const bool bottom = onion::overlay::bar_edge_from_pos(g_settings.overlay_pos) ==
-                      onion::overlay::BarEdge::Bottom;
-  /* Bottom edge: grow upward so the last row sits on the screen edge. */
-  const float y_base = bottom ? g_overlay_layout.bar_y -
-                                    static_cast<float>(nrows - 1) * line_h
-                              : g_overlay_layout.bar_y;
-  const float margin_top = g_overlay_layout.label_margin_top;
-
-  static const char *kAll[] = {
-      "id_fps_label",        "id_fps_value",       "id_fps_sep",
-      "id_cpu_label",        "id_cpu_temp_value",  "id_cpu_usage_value",
-      "id_cpu_sep",          "id_gpu_label",       "id_gpu_temp_value",
-      "id_gpu_usage_value",  "id_gpu_sep",         "id_ram_label",
-      "id_ram_value",        "id_ram_sep",         "id_ip_label",
-      "id_ip_value",         "id_ip_sep",          "id_fan_label",
-      "id_fan_value",        "id_fan_sep",
-  };
-  for (const char *id : kAll)
-    set_label_layout(id, kOff, margin_top, 0.0f, y_base);
-
-  set_bg_panel_rect(x0 - kPad, y_base, block_w + 2.0f * kPad,
-                    static_cast<float>(nrows) * line_h);
-
-  const float v0_x = x0 + label_w + kPairGap;
-  const float v1_x = v0_x + v0_w + kValGap;
-  for (int r = 0; r < nrows; ++r) {
-    const GroupSpec &gs = rows[r];
-    const float y = y_base + static_cast<float>(r) * line_h;
-    set_label_layout(gs.id_l, x0, margin_top, label_w, y);
-    set_label_text(gs.id_l, gs.lab);
-    set_label_layout(gs.id_v0, v0_x, margin_top, v0_w, y);
-    set_label_text(gs.id_v0, gs.v0);
-    if (gs.id_v1 && gs.v1 && gs.v1[0]) {
-      set_label_layout(gs.id_v1, v1_x, margin_top, v1_w, y);
-      set_label_text(gs.id_v1, gs.v1);
-    }
-  }
-}
-
-#endif /* ONIONHEN_FPS_OVERLAY_ONLY */
 
 void discover_idle_thread_ids(unsigned int idle_tid[kCpuCores]) {
   int count = kMaxProcThreads;
@@ -511,13 +361,6 @@ bool init_overlay_once(unsigned int idle_tid[kCpuCores]) {
     if (!CreateGameWidget(CREATE_CPU_OVERLAY))
       widgets_ready = false;
   }
-#ifndef ONIONHEN_FPS_OVERLAY_ONLY
-  /* The standalone build prints GPU temp in the CPU row; no GPU widgets. */
-  if (g_settings.overlay_gpu) {
-    if (!CreateGameWidget(CREATE_GPU_OVERLAY))
-      widgets_ready = false;
-  }
-#endif
   if (g_settings.overlay_ram) {
     if (!CreateGameWidget(CREATE_RAM_OVERLAY))
       widgets_ready = false;
@@ -595,7 +438,6 @@ bool sample_cpu_usage(unsigned int idle_tid[kCpuCores], int& current_bank,
   return false;
 }
 
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
 /* False once the payload has exited (clean shutdown marker) or stopped
  * publishing (killed). The overlay then removes all its widgets so nothing
  * stays on screen; it comes back by itself if the payload is started again. */
@@ -620,9 +462,7 @@ bool fps_payload_alive() {
     return last = false;
   return last = true;
 }
-#endif
 
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
 /* Frame rate of the shell itself, measured from how often the per-frame
  * PUI.Application.Update hook runs. Used on the home screen, where no game is
  * running and the payload has no scanout sample to publish. */
@@ -648,9 +488,7 @@ void tick_shell_fps() {
     frames = 0;
   }
 }
-#endif
 
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
 /* True when the live payload is publishing but reports no running game. */
 bool fps_raw_sample(OnionFpsSample *out) {
   static OnionFpsSample *map;
@@ -706,35 +544,24 @@ void update_overlay_title() {
   else
     std::snprintf(g_overlay_title, sizeof(g_overlay_title), "%s", tid);
 }
-#endif
 
 void format_fps_text(char *buf, size_t buf_sz) {
   if (!buf || buf_sz == 0)
     return;
   OnionFpsSample sample {};
   if (onion_fps_read(&sample) == 0 && sample.valid && sample.fps >= 1.f) {
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
     snprintf(buf, buf_sz, "%.2f", sample.fps);
-#else
-    if (sample.fps >= 100.f)
-      snprintf(buf, buf_sz, "%.0f", sample.fps);
-    else
-      snprintf(buf, buf_sz, "%.1f", sample.fps);
-#endif
   } else {
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
     /* onion_fps_read() fails for any invalid sample, so ask the raw sample
      * whether a game is running: no title id means home screen. */
     if (fps_no_game_running() && g_shell_fps >= 1.f) {
       snprintf(buf, buf_sz, "%.2f", g_shell_fps);
       return;
     }
-#endif
     snprintf(buf, buf_sz, "--");
   }
 }
 
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
 /* RAM/VRAM page-table stats. In games the system VM (kVmSystem) reports them,
  * but on the home screen it can report 0/0. Other VM ids are only probed once
  * the home screen has been stable for a few updates (never while a game is
@@ -864,7 +691,6 @@ void get_mem_stats(int type, Memory &m) {
   /* Nothing usable yet (transition): keep showing the previous reading
    * instead of flashing 0 MB. */
 }
-#endif
 
 void update_overlay_metrics(unsigned int idle_tid[kCpuCores], int& current_bank,
                             char *cpu_temp, size_t cpu_temp_sz, char *cpu_usage,
@@ -875,48 +701,28 @@ void update_overlay_metrics(unsigned int idle_tid[kCpuCores], int& current_bank,
   if (!g_settings.overlay_enabled)
     return;
 
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
   note_home_state();
   if (g_settings.overlay_ram && g_game_updates >= kGameScanUpdates)
     dump_vm_debug();
-#endif
   sample_cpu_usage(idle_tid, current_bank, cpu_usage, cpu_usage_sz);
 
   if (g_settings.overlay_ram) {
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
     get_mem_stats(kPageTableRam, RAM);
     snprintf(ram_str, ram_sz, "%d%% %dMB",
              RAM.Total > 0 ? static_cast<int>((100LL * RAM.Used) / RAM.Total) : 0,
              static_cast<int>(RAM.Used));
-#else
-    Get_Page_Table_Stats(kVmSystem, kPageTableRam, &RAM.Used, &RAM.Free, &RAM.Total);
-    snprintf(ram_str, ram_sz, "%u MB", RAM.Used);
-#endif
   }
 
   if (g_settings.overlay_gpu) {
     int soc_temp = 0;
     sceKernelGetSocSensorTemperature(0, &soc_temp);
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
     snprintf(gpu_temp, gpu_temp_sz, "%d\xC2\xB0" "C", soc_temp); /* 35°C */
-#else
-    snprintf(gpu_temp, gpu_temp_sz, "%dC", soc_temp);
-#endif
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
     if (g_settings.overlay_ram)
       get_mem_stats(kPageTableVram, VRAM);
-#else
-    Get_Page_Table_Stats(kVmSystem, kPageTableVram, &VRAM.Used, &VRAM.Free,
-                         &VRAM.Total);
-#endif
     VRAM.Percentage =
         (VRAM.Total > 0) ? ((float)VRAM.Used / (float)VRAM.Total) * 100.0f : 0.f;
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
     snprintf(gpu_usage, gpu_usage_sz, "%.0f%% %dMB", VRAM.Percentage,
              static_cast<int>(VRAM.Used));
-#else
-    snprintf(gpu_usage, gpu_usage_sz, "%.0f%%", VRAM.Percentage);
-#endif
   }
 
   if (g_settings.overlay_ip) {
@@ -936,11 +742,7 @@ void update_overlay_metrics(unsigned int idle_tid[kCpuCores], int& current_bank,
   if (g_settings.overlay_cpu || g_settings.all_cpu_usage) {
     int cpu_t = 0;
     sceKernelGetCpuTemperature(&cpu_t);
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
     snprintf(cpu_temp, cpu_temp_sz, "%d\xC2\xB0" "C", cpu_t); /* 43°C */
-#else
-    snprintf(cpu_temp, cpu_temp_sz, "%dC", cpu_t);
-#endif
   }
 
   if (g_settings.overlay_fan) {
@@ -968,7 +770,6 @@ void OnRender_Hook(MonoObject* instance) {
   }
 
   /* UI thread: one NPXS40002 reload covers display TIDs and top-nav patch. */
-  shellui_poll_home_reload();
 
   static bool inited = false;
   static unsigned int idle_thread_id[kCpuCores] = {};
@@ -988,7 +789,6 @@ void OnRender_Hook(MonoObject* instance) {
   static char last_layout_sig[640] = {};
   static uint64_t next_forced_layout_ns = 0;
 
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
   /* Payload gone (exited or killed): take the overlay down and stay idle. */
   if (!fps_payload_alive()) {
     if (inited) {
@@ -1004,7 +804,6 @@ void OnRender_Hook(MonoObject* instance) {
     return;
   }
   tick_shell_fps();
-#endif
 
   if (!inited) {
     if (frames_until_init > 0) {
@@ -1044,7 +843,6 @@ void OnRender_Hook(MonoObject* instance) {
       static_cast<uint64_t>(metrics_ts.tv_nsec);
   /* One tick every second drives every value, FPS included, so the rows change
    * together. */
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
   /* Every value refreshes once a second, except that opening or quitting a game
    * (or its name arriving) refreshes everything at once. The shared sample is
    * checked every 100 ms for that. */
@@ -1067,9 +865,6 @@ void OnRender_Hook(MonoObject* instance) {
     }
   }
   const bool tick = game_changed || metrics_now_ns >= next_update_ns;
-#else
-  const bool tick = metrics_now_ns >= next_update_ns;
-#endif
   if (tick) {
     update_overlay_metrics(idle_thread_id, current_bank, cpu_temp,
                            sizeof(cpu_temp), cpu_usage, sizeof(cpu_usage),
@@ -1080,7 +875,6 @@ void OnRender_Hook(MonoObject* instance) {
     next_update_ns = metrics_now_ns + kOverlayUpdateIntervalNs;
   }
 
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
   /* Everything refreshes together on the tick, except that a "--" is replaced
    * as soon as a value exists (polled every 100 ms) so a game that just started
    * does not show "--" until the next 1 s tick. */
@@ -1094,20 +888,12 @@ void OnRender_Hook(MonoObject* instance) {
     fps_arrived = probe[0] != '-';
   }
   const bool layout_tick = tick || fps_arrived;
-#else
-  static int frames_until_fps = 0;
-  const bool layout_tick = frames_until_fps <= 0;
-  frames_until_fps = layout_tick ? kFpsUpdateIntervalFrames : frames_until_fps - 1;
-#endif
   if (layout_tick) {
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
     update_overlay_title();
-#endif
     if (g_settings.overlay_fps)
       format_fps_text(fps_str, sizeof(fps_str));
     else
       fps_str[0] = '\0';
-#ifdef ONIONHEN_FPS_OVERLAY_ONLY
     /* Re-laying out the widgets is the costly part of a tick; do it only when a
      * shown text changed (and at least every 5 s as a safety refresh). */
     char sig[sizeof(last_layout_sig)];
@@ -1120,7 +906,6 @@ void OnRender_Hook(MonoObject* instance) {
     }
     std::memcpy(last_layout_sig, sig, sizeof(sig));
     next_forced_layout_ns = metrics_now_ns + 5000000000ull;
-#endif
     layout_bar_labels(
         g_settings.overlay_fps ? fps_str : nullptr,
         (g_settings.overlay_cpu || g_settings.all_cpu_usage) ? cpu_temp

@@ -15,7 +15,6 @@
 
 namespace {
 
-std::atomic<bool> g_home_reload_pending{false};
 
 } // namespace
 
@@ -118,22 +117,15 @@ uint64_t Get_Address_of_Method(MonoImage *Assembly_Image, const char *Name_Space
   MonoClass *klass = mono_class_from_name(Assembly_Image, Name_Space, Class_Name);
   if (!klass)
   {
-#if SHELL_DEBUG == 1
-    LOG_ERROR("Get_Address_of_Method: failed to open class \"%s\" in namespace \"%s\"", Class_Name, Name_Space);
-#endif
     return 0;
   }
 
   MonoMethod *Method = mono_class_get_method_from_name(klass, Method_Name, Param_Count);
   if (!Method)
   {
-#if SHELL_DEBUG == 1
-    LOG_ERROR("Get_Address_of_Method: failed to find method \"%s\" in class \"%s\"", Method_Name, Class_Name);
-#endif
     return 0;
   }
 
-  // return (uint64_t)mono_aot_get_method(Root_Domain, Method);
   return mono_compile_method(Method);
 }
 
@@ -151,24 +143,5 @@ uint64_t Get_Address_of_Method(MonoImage* Assembly_Image, MonoClass* klass, cons
 		return 0;
 	}
 
-	//return (uint64_t)mono_aot_get_method(mono_get_root_domain(), Method);
   return mono_compile_method(Method);
-}
-
-void ReloadRNPSApp(const char* title_id){
-    void (*ReloadApp)(MonoString* tid) = (void(*)(MonoString*))Get_Address_of_Method(react_common_img, "ReactNative.Vsh.Common", "ReactApplicationSceneManager", "ReloadApp", 1);
-    if (ReloadApp) {
-        LOG_DEBUG("Reloading %s scenes", title_id);
-        ReloadApp(mono_string_new(Root_Domain, title_id));
-    } else {
-        LOG_ERROR("Failed to find reload method, not reloading scene");
-    }
-}
-
-void shellui_poll_home_reload(void) {
-  if (!g_home_reload_pending.exchange(false, std::memory_order_acq_rel)) {
-    return;
-  }
-  LOG_DEBUG("applying NPXS40002 home reload on UI thread");
-  ReloadRNPSApp("NPXS40002");
 }

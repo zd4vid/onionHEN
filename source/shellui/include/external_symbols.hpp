@@ -147,54 +147,26 @@ typedef struct app_info {
 extern MonoDomain* Root_Domain;
 
 /* ====================================== Dynamic SystemService Symbols ===================================*/
-extern  int (*sceSystemServiceGetAppIdOfRunningBigApp)(void);
-extern  int (*sceSystemServiceParamGetInt)(int param_id, int* value);
-extern  int (*sceSystemServiceGetAppTitleId)(int appid, char* titleid);
 
 /* ====================================== Dynamic libkernel_sys Symbols ===================================*/
 
 extern int (*sceKernelMprotect)(void* addr, size_t len, int prot);
-extern int (*sceKernelDebugOutText)(int DBG_CHANNEL, const char* text);
 
 
 extern int (*sceKernelSendNotificationRequest)(int unk1, OrbisNotificationRequest* req, int size, int unk2);
-extern int (*sceKernelMkdir)(const char* path, int mode);
 
 
-extern  int (*sceKernelGetProsperoSystemSwVersion)(OrbisKernelSwVersion* sw);
-extern  int (*scePthreadCreate)(void* thread, const void* attr, void* (*entry) (void*), void* arg, const char* name);
 
-extern int (*sceKernelGetAppInfo)(pid_t pid, app_info_t *info);
-extern int (*sceKernelGetProcessName)(int pid, char* name);
 extern int (*sceKernelGetCurrentFanDuty)(uint16_t* out_duty, uint64_t* out_chassis_info);
-extern  int (*sceKernelJitCreateSharedMemory)(int flags, size_t size, int protection, int *destinationHandle);
-extern  int (*sceKernelJitCreateAliasOfSharedMemory)(int handle, int protection, int *destinationHandle);
-extern  int (*sceKernelJitMapSharedMemory)(int handle, int protection, void **destination);
-extern int(*ioctl)(int, int, void*);
-extern int (*sceRegMgrGetInt)(long, int*);
 
 /* ====================================== Dynamic Remote Play Symbols ===================================*/
-extern int (*sceRemoteplayInitialize)(void*, size_t);
-extern int (*sceRemoteplayGeneratePinCode)(uint32_t*);
-extern int (*sceRemoteplayConfirmDeviceRegist)(int*, int*);
-extern int (*sceRemoteplayNotifyPinCodeError)(int);
 
 
 /* ====================================== Dynamic Mono Symbols ===================================*/
-extern MonoArray* (*mono_array_new)(MonoDomain* domain, MonoClass* eclass, uint32_t size);
 /** Real Mono API returns gchandle id (uint32). */
-extern uint32_t (*mono_gchandle_new)(MonoObject *obj, int pinned);
-extern void (*mono_gchandle_free)(uint32_t gchandle);
-extern MonoClass* (*mono_get_byte_class)();
-extern  MonoObject* (*mono_vtable_get_static_field_data)(MonoVTable* vt);
-extern char* (*mono_array_addr_with_size)(MonoArray* array, int size, uintptr_t idx);
-extern uint64_t(*mono_aot_get_method)(MonoDomain* domain, MonoMethod* method);
 extern  void* (*mono_object_unbox)(MonoObject* obj);
 extern uint64_t(*mono_compile_method)(MonoMethod* method);
-extern const char* (*mono_string_to_utf8)(MonoString* str);
-extern void (*mono_free)(void* ptr);
 extern MonoDomain* (*mono_get_root_domain)();
-extern MonoDomain* (*mono_jit_init_version)(const char* file, const char* runtime_version);
 extern MonoClass* (*mono_class_from_name)(MonoImage* image, const char* name_space, const char* name);
 extern MonoAssembly* (*mono_domain_assembly_open)(MonoDomain* domain, const char* name);
 extern MonoImage* (*mono_assembly_get_image)(MonoAssembly* assembly);
@@ -206,29 +178,8 @@ extern MonoString* (*mono_string_new)(MonoDomain* domain, const char* str); //
 extern MonoThread* (*mono_thread_attach)(MonoDomain* domain);
 extern MonoMethod* (*mono_class_get_method_from_name)(MonoClass* klass, const char* name, int param_count);//
 extern void (*mono_runtime_object_init)(MonoObject* obj);
-extern MonoClassField* (*mono_class_get_field_from_name)(MonoClass* klass, const char* name);
-extern void (*mono_field_get_value)(MonoObject *object, MonoClassField *field, void *value);
-extern void (*mono_field_static_set_value)(MonoVTable* vt, MonoClassField* field, void* value);
-extern MonoVTable* (*mono_class_vtable)(MonoDomain* domain, MonoClass* klass);
-extern MonoImage* (*mono_image_open_from_data)(char* data, uint32_t data_len, int need_copy, MonoImageOpenStatus* status);
-extern MonoAssembly* (*mono_assembly_load_from)(MonoImage* image, const char* fname, MonoImageOpenStatus* status);
 // extern void (*setenv)(const char*, const char*, int);
 extern MonoDomain* (*mono_domain_get)();
-extern void (*mono_set_dirs)(const char*, const char*);
-extern void (*mono_assembly_setrootdir)(const char*);
-extern void (*mono_thread_detach)(MonoThread* thread);
-extern MonoThread* (*mono_thread_current)();
-extern void (*mono_jit_set_aot_only)(int aot_only);
-extern void (*mono_domain_unload)(MonoDomain* domain);
-extern MonoMethodDesc* (*mono_method_desc_new)(const char* name, int include_namespace);
-extern MonoMethod* (*mono_method_desc_search_in_class)(MonoMethodDesc* desc, MonoClass* klass);
-extern void (*mono_method_desc_free)(MonoMethodDesc* desc);
 extern MonoObject* (*mono_object_new)(MonoDomain* domain, MonoClass* klass);
-extern MonoObject* (*mono_object_new_specific)(MonoVTable* vtable);//mono_object_get_class
-extern MonoClass* (*mono_object_get_class)(MonoObject* obj);
-extern MonoString *(*mono_object_to_string)(MonoObject *obj, MonoObject **exc);
-extern void (*mono_raise_exception)(MonoObject *exception);
 
 
-extern int (*sceShellUIUtilInitialize)(void);
-extern int (*sceShellUIUtilLaunchByUri)(const char* uri, SceShellUIUtilLaunchByUriParam* Param);
