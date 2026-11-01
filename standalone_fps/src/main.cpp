@@ -406,8 +406,6 @@ static constexpr int kAppLostPasses = 5;
 /* Passes of scanout read failures in a row (5 s) before /dev/dce is reopened. */
 static constexpr int kDceReopenPasses = 50;
 static constexpr int kDceMaxReopensPerTitle = 6;
-/* A scanout rate measured this recently may seed a title that has no value yet. */
-static constexpr double kSeedFreshSec = 1.5;
 static constexpr double kStallLogSec = 10.0;
 
 static void *safe_sampler_thread(void *) {
@@ -421,11 +419,9 @@ static void *safe_sampler_thread(void *) {
   float window[onion::fps::kWindow]{};
   int wn = 0, wi = 0;
 
-  /* Latest rate measured from the scanout counter, whatever is on screen. The
-   * counter is read all the time (not only while a game runs) so that a game
-   * start already has a baseline and a recent rate to show. */
-  float recent_hz = 0.f;
-  double recent_hz_t = 0.0;
+  /* The scanout counter is read all the time (not only while a game runs) so
+   * that a game start already has a baseline. Only rates measured while the
+   * current title runs are shown. */
   /* The name read from the app metadata can come back empty (files not there
    * yet): retry for a while and reuse the last name known for the same title. */
   std::string name_tid, name_keep;
@@ -459,9 +455,7 @@ static void *safe_sampler_thread(void *) {
           stall_logged = false;
         }
         if (hz > 0.0) {
-          recent_hz = static_cast<float>(hz);
-          recent_hz_t = now;
-          window[wi] = recent_hz;
+          window[wi] = static_cast<float>(hz);
           wi = (wi + 1) % onion::fps::kWindow;
           if (wn < onion::fps::kWindow)
             ++wn;
@@ -528,22 +522,6 @@ static void *safe_sampler_thread(void *) {
       stall_logged = false;
       reopens_this_title = 0;
       last_advance_t = now;
-
-      /* Show something straight away instead of "--" until frames are seen. */
-      float seed = 0.f;
-      const char *why = nullptr;
-      if (recent_hz >= onion::fps::kFpsMin &&
-                 recent_hz <= onion::fps::kFpsMax &&
-                 now - recent_hz_t < kSeedFreshSec) {
-        seed = recent_hz;
-        why = "current scanout rate";
-      }
-      if (seed > 0.f) {
-        window[0] = seed;
-        wi = 1 % onion::fps::kWindow;
-        wn = 1;
-        LOG_INFO("safe fps: seeded with %.1f fps (%s)", seed, why);
-      }
     }
 
     if (g_title_name.empty() && name_tries < 20 && now >= next_name_try) {
