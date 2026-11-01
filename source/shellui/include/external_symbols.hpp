@@ -24,12 +24,6 @@ along with this program; see the file COPYING. If not, see
 
 typedef struct
 {
-    unsigned int size;
-    uint32_t userId;
-} SceShellUIUtilLaunchByUriParam;
-
-typedef struct
-{
     int32_t type;			 // 0x00
     int32_t req_id;			 // 0x04
     int32_t priority;		 // 0x08
@@ -126,22 +120,6 @@ typedef struct
 
 // Token: 0x02000064 RID: 100
 
-typedef struct
-{
-    uint64_t pad0;
-    char version_str[0x1C];
-    uint32_t version;
-    uint64_t pad1;
-} OrbisKernelSwVersion;
-
-
-typedef struct app_info {
-  uint32_t app_id;
-  uint64_t unknown1;
-  uint32_t app_type;
-  char     title_id[10];
-  char     unknown2[0x3c];
-} app_info_t;
 
 /* ====================================== Global vars ======================================================*/
 extern MonoDomain* Root_Domain;

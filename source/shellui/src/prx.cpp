@@ -59,7 +59,6 @@ void OnRender_Hook(MonoObject* instance);
 
 namespace {
 
-constexpr int kSyscallInstrOffset = 0x0A;
 constexpr size_t kMprotectProbeSize = 100;
 constexpr int kProtRwx = 0x7; // PROT_READ | PROT_WRITE | PROT_EXEC
 // Same magnitude as the previous sleep(0x100000) keep-alive.

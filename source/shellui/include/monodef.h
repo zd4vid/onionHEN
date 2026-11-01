@@ -30,16 +30,6 @@ typedef int32_t             gint32;
 typedef uint32_t            guint32;
 typedef uint16_t            gunichar2;
 
-typedef enum {
-	MONO_IMAGE_OK,
-	MONO_IMAGE_ERROR_ERRNO,
-	MONO_IMAGE_MISSING_ASSEMBLYREF,
-	MONO_IMAGE_IMAGE_INVALID
-} MonoImageOpenStatus;
-
-typedef guint32 mono_array_size_t;
-typedef gint32 mono_array_lower_bound_t;
-
 #define MONO_ZERO_LEN_ARRAY 1
 
 #if defined(_MSC_VER) && defined(PLATFORM_IPHONE_XCOMP)
@@ -53,7 +43,6 @@ struct MonoAssembly;
 struct MonoImage;
 
 struct MonoMethodSignature;
-struct MonoMethodDesc;
 struct MonoClassField;
 struct MonoProperty;
 struct MonoThreadsSync;
@@ -264,20 +253,6 @@ struct MonoString {
 	struct MonoObject object;
 	gint32 length;
 	gunichar2 chars[MONO_ZERO_LEN_ARRAY];
-};
-
-struct MonoArrayBounds {
-	mono_array_size_t length;
-	mono_array_lower_bound_t lower_bound;
-};
-
-struct MonoArray {
-	struct MonoObject obj;
-	/* bounds is NULL for szarrays */
-	struct MonoArrayBounds* bounds;
-	/* total number of elements of the array */
-	mono_array_size_t max_length;
-	double vector[MONO_ZERO_LEN_ARRAY];
 };
 
 struct MonoMethod {

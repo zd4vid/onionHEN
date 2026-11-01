@@ -9,21 +9,7 @@
 #include <cstdint>
 #include <onion/log.h>
 
-/* Minimal DIR surface used by payload scanners (not full BSD dirent). */
-typedef struct _dirdesc {
-    int dd_fd;
-    long dd_loc;
-    long dd_size;
-    char *dd_buf;
-    int dd_len;
-    long dd_seek;
-    long dd_rewind;
-    int dd_flags;
-    struct pthread_mutex *dd_lock;
-    struct _telldir *dd_td;
-} DIR;
 
-extern "C" struct dirent* readdir(DIR*);
 
 void notify(const char* text, ...);
 
