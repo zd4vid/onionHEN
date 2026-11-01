@@ -28,7 +28,6 @@ add_custom_command(
   OUTPUT "${NOTIFY_I18N_CATALOG}"
   COMMAND "${Python3_EXECUTABLE}" "${I18N_DIR}/generate_catalog.py"
     --locales-dir "${I18N_DIR}"
-    --catalog notifications
     --output "${NOTIFY_I18N_CATALOG}"
   DEPENDS
     "${I18N_DIR}/generate_catalog.py"

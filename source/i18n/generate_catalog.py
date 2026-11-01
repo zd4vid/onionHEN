@@ -17,29 +17,12 @@ from pathlib import Path
 from typing import Any
 
 
-SECTIONS = ("toolbox", "notifications")
+SECTIONS = ("notifications",)
 PRINTF_CONVERSION = re.compile(
     r"%(?:\d+\$)?[-+ #0']*(?:\*|\d+)?(?:\.(?:\*|\d+))?"
     r"(?:hh|h|ll|l|j|z|t|L)?([diuoxXfFeEgGaAcspn%])"
 )
 DUPLICATED_INTERNAL_SPACE = re.compile(r"\S {2,}\S")
-
-REQUIRED_TOKENS = {
-    "toolbox": {
-        "group.payloads.sub": ("Kstuff",),
-        "plugins.link.sub": ("Kstuff",),
-    },
-    "notifications": {
-        "notify.kstuff.loading": ("Kstuff",),
-        "notify.kstuff.load_failed": ("Kstuff",),
-        "notify.kstuff.load_elfldr_failed": ("Kstuff",),
-        "notify.kstuff.deleted": ("Kstuff",),
-        "notify.crash.main": (
-            "OnionHEN_crash.log",
-            "https://github.com/aydencharles/onionHEN/issues",
-        ),
-    },
-}
 
 FILENAME_IDS = {
     "en-US.json": ("en", True),
@@ -119,7 +102,6 @@ def load_locale(path: Path) -> dict[str, Any]:
         "id": locale_id,
         "bcp47": str(meta.get("bcp47") or path.stem),
         "fallback": fallback,
-        "toolbox": data["toolbox"],
         "notifications": data["notifications"],
     }
 
@@ -185,20 +167,6 @@ def validate_locales(locales: list[dict[str, Any]]) -> None:
                     )
 
     for locale in locales:
-        for section, required_keys in REQUIRED_TOKENS.items():
-            for key, tokens in required_keys.items():
-                value = locale[section].get(key)
-                if value is None:
-                    raise SystemExit(
-                        f"error: required consistency key {section}.{key} "
-                        f"is missing in {locale['path'].name}"
-                    )
-                missing = [token for token in tokens if token not in value]
-                if missing:
-                    raise SystemExit(
-                        f"error: {section}.{key} in {locale['path'].name} "
-                        f"is missing required token(s): {', '.join(missing)}"
-                    )
         for section in SECTIONS:
             for key, value in locale[section].items():
                 if DUPLICATED_INTERNAL_SPACE.search(value):
@@ -208,7 +176,7 @@ def validate_locales(locales: list[dict[str, Any]]) -> None:
                     )
 
 
-def generate(catalog: str, locales: list[dict[str, Any]]) -> str:
+def generate(locales: list[dict[str, Any]]) -> str:
     ids = [locale["id"] for locale in locales]
     lines = [
         "// Generated from source/i18n locale catalogs. Do not edit.",
@@ -219,28 +187,16 @@ def generate(catalog: str, locales: list[dict[str, Any]]) -> str:
         "static const int kI18nLocaleFallback = 0;",
         "",
     ]
-    if catalog == "toolbox":
-        lines.extend(
-            [
-                "struct Entry {",
-                "  const char *key;",
-                "  const char *text[I18N_LOCALE_COUNT];",
-                "};",
-                "constexpr Entry kTable[] = {",
-            ]
-        )
-        section = "toolbox"
-    else:
-        lines.extend(
-            [
-                "typedef struct {",
-                "  const char *key;",
-                "  const char *text[I18N_LOCALE_COUNT];",
-                "} notify_translation_t;",
-                "static const notify_translation_t kTranslations[] = {",
-            ]
-        )
-        section = "notifications"
+    lines.extend(
+        [
+            "typedef struct {",
+            "  const char *key;",
+            "  const char *text[I18N_LOCALE_COUNT];",
+            "} notify_translation_t;",
+            "static const notify_translation_t kTranslations[] = {",
+        ]
+    )
+    section = "notifications"
     for key in locales[0][section]:
         texts = ", ".join(cpp_string(locale[section][key]) for locale in locales)
         lines.append(f"  {{{cpp_string(key)}, {{{texts}}}}},")
@@ -253,16 +209,13 @@ def main() -> None:
     parser.add_argument("--locales-dir", type=Path)
     parser.add_argument("--zh-cn", type=Path)
     parser.add_argument("--en-us", type=Path)
-    parser.add_argument(
-        "--catalog", required=True, choices=("toolbox", "notifications")
-    )
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
 
     explicit = [path for path in (args.en_us, args.zh_cn) if path]
     locales = discover_locales(args.locales_dir, explicit)
     validate_locales(locales)
-    content = generate(args.catalog, locales)
+    content = generate(locales)
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     if args.output.exists() and args.output.read_text(encoding="utf-8") == content:
