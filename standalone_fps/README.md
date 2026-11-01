@@ -1,9 +1,9 @@
 # Standalone FPS overlay
 
-`overlay.elf` is the **only payload to load**. It samples the scanout
+`fps_counter.elf` is the **only payload to load**. It samples the scanout
 counter (/dev/dce, no game or kernel memory access), publishes it to
 `/system_tmp/onionhen/fps_sample`, and injects an overlay-only ShellUI module
-(embedded in `overlay.elf`) that
+(embedded in `fps_counter.elf`) that
 draws two plain white text rows, top-left, regular weight, no background panel:
 
     FPS: 59.94
@@ -11,15 +11,15 @@ draws two plain white text rows, top-left, regular weight, no background panel:
 
 Build: `export PS5_PAYLOAD_SDK=...; ./standalone_fps/build.sh`
 
-Output: `standalone_fps/build/bin/overlay.elf` (the only file in `build/bin/`).
+Output: `standalone_fps/build/bin/fps_counter.elf` (the only file in `build/bin/`).
 The overlay module `shellui.elf` is an intermediate under `build/internal/`;
 never load it separately (it is already embedded, and loading it on its own
 fails).
 
 kstuff is optional. The payload logs whether it is running; without it the
 overlay's hooks fall back to a kernel mprotect. It also skips injection if
-SceShellUI already has the overlay, and waits 500 ms before the first injection
-(change it by writing a number of milliseconds to `/data/onion_fps_delay`; 0
+SceShellUI already has the overlay, and waits 5 s before the first injection
+(change it by writing a number of seconds to `/data/onion_fps_delay`; 0
 disables the wait).
 
 All values, FPS and IP included, refresh together every second, and immediately when
