@@ -4,8 +4,4 @@
 #pragma once
 
 namespace onion {
-struct Settings {
-  bool overlay_enabled = true;
-  bool overlay_fps = true;
-};
 } // namespace onion

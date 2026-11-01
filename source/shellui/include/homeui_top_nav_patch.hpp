@@ -30,6 +30,3 @@ struct MonoImage;
 #ifndef SHELLUI_HOMEUI_TOP_NAV_PATCH
 #define SHELLUI_HOMEUI_TOP_NAV_PATCH 1
 #endif
-
-void patch_homeui_top_nav(unsigned char *buffer, int *size_ptr,
-                          int buffer_capacity);

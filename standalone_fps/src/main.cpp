@@ -232,7 +232,6 @@ static void *injector_thread(void *) {
 }
 
 std::atomic_bool g_stack_shutting_down{false};
-onion::SettingsStore g_settings;
 
 bool Get_Running_App_TID(std::string &title_id, int &BigAppid) {
   char tid[255];

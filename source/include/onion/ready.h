@@ -43,9 +43,6 @@ extern "C" {
 #define ONION_FLAG_UTIL_BOOTED "util_booted"
 
 /* Publish / clear / query. name is a short token (no path separators). */
-bool onion_ready_signal(const char *name);
-bool onion_ready_clear(const char *name);
-bool onion_ready_is_set(const char *name);
 
 /*
  * Process-instance readiness.
@@ -65,11 +62,8 @@ bool onion_ready_matches_pid(const char *name, pid_t pid);
  * poll_ms is the sleep between checks (clamped to >= 50).
  * Returns true if ready, false on timeout or invalid name.
  */
-bool onion_ready_wait(const char *name, int timeout_ms, int poll_ms);
 
 /* Wait until the marker contains exactly the expected process PID. */
-bool onion_ready_wait_pid(const char *name, pid_t pid, int timeout_ms,
-                          int poll_ms);
 
 /* Build absolute path for a name into buf (for logging). */
 bool onion_ready_path(const char *name, char *buf, size_t buflen);

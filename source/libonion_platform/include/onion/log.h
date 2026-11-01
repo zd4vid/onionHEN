@@ -80,7 +80,6 @@ void onion_log_configure(const char *tag, const char *log_path);
 void onion_log_set_level(onion_log_level level);
 
 /** "off"/"error"/"warn"/"info"/"debug"/"trace", case-insensitive. */
-bool onion_log_level_from_name(const char *name, onion_log_level *out);
 const char *onion_log_level_name(onion_log_level level);
 
 /** Emit a record. Prefer the LOG_* macros, which apply both gates first. */

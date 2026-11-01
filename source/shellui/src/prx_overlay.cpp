@@ -74,25 +74,6 @@ Proc_Stats Stat_Data[3072];
 thread_usages gThread_Data[2];
 
 
-void Get_Page_Table_Stats(int vm, int type, int* Used, int* Free, int* Total)
-{
-    int _Total = 0, _Free = 0;
-
-    if (get_page_table_stats(vm, type, &_Total, &_Free) == -1) {
-        LOG_ERROR("get_page_table_stats() Failed.");
-        return;
-    }
-
-    if (Used)
-        *Used = (_Total - _Free);
-
-    if (Free)
-        *Free = _Free;
-
-    if (Total)
-        *Total = _Total;
-}
-
 void calc_usage(unsigned int idle_tid[8], thread_usages* cur, thread_usages* prev, float usage_out[8])
 {
     if (cur->Thread_Count <= 0 || prev->Thread_Count <= 0) //Make sure our banks have threads

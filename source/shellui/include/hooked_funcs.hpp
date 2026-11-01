@@ -9,64 +9,6 @@
 #include "hook_lifecycle.hpp"
 #include <cstdint>
 
-enum GamePadButtons
-	{
-        None = 0,
-		// Token: 0x040000D0 RID: 208
-		Left = 1U,
-		// Token: 0x040000D1 RID: 209
-		Up = 2U,
-		// Token: 0x040000D2 RID: 210
-		Right = 4U,
-		// Token: 0x040000D3 RID: 211
-		Down = 8U,
-		// Token: 0x040000D4 RID: 212
-		Square = 16U,
-		// Token: 0x040000D5 RID: 213
-		Triangle = 32U,
-		// Token: 0x040000D6 RID: 214
-		Circle = 64U,
-		// Token: 0x040000D7 RID: 215
-		Cross = 128U,
-		// Token: 0x040000D8 RID: 216
-		Start = 256U,
-		// Token: 0x040000D9 RID: 217
-		Select = 512U,
-		// Token: 0x040000DA RID: 218
-		Option = 256U,
-		// Token: 0x040000DB RID: 219
-		L1 = 1024U,
-		// Token: 0x040000DC RID: 220
-		R1 = 2048U,
-		// Token: 0x040000DD RID: 221
-		L2 = 4096U,
-		// Token: 0x040000DE RID: 222
-		R2 = 8192U,
-		// Token: 0x040000DF RID: 223
-		L3 = 16384U,
-		// Token: 0x040000E0 RID: 224
-		R3 = 32768U,
-		// Token: 0x040000E1 RID: 225
-		Enter = 65536U,
-		// Token: 0x040000E2 RID: 226
-		Back = 131072U,
-		// Token: 0x040000E3 RID: 227
-		TouchPad = 262144U,
-		// Token: 0x040000E4 RID: 228
-		Move = 524288U,
-		// Token: 0x040000E5 RID: 229
-		Intercepted = 2147483648U
-    };
-
-struct ioctl_C0105203_args
-{
-  void* buffer;
-  int size;
-  int error;
-};
-
-void __syscall();
-
 /* Minimal DIR surface used by payload scanners (not full BSD dirent). */
 typedef struct _dirdesc {
     int dd_fd;
@@ -81,9 +23,7 @@ typedef struct _dirdesc {
     struct _telldir *dd_td;
 } DIR;
 
-extern "C" DIR * opendir(const char*);
 extern "C" struct dirent* readdir(DIR*);
-extern "C" int closedir(DIR*);
 
 void notify(const char* text, ...);
 
@@ -92,7 +32,6 @@ extern void (*Orig_ReloadApp)(MonoString* str);
 extern MonoImage * react_common_img;
 
 /* =============================== mono utils =============================================================================*/
-std::string Mono_to_String(MonoString* str);
 std::string base64_decode(const std::string &encoded_string);
 void ReloadRNPSApp(const char* title_id);
 
@@ -108,8 +47,6 @@ bool resolve_root_dimensions(MonoObject *root, float *screen_w, float *screen_h)
 
 /** Drain the one-shot Home reload; call only from UI thread after hooks ready. */
 void shellui_poll_home_reload(void);
-
-bool SetVersionString(const char* str);
 
 template <typename result>
 result Get_Property(MonoClass* Klass, MonoObject* Instance, const char* Property_Name)
@@ -252,10 +189,6 @@ result Invoke(MonoImage* Assembly_Image, MonoClass* klass, MonoObject* Instance,
 }
 
 
-extern MonoString* (*CxmlUri)(MonoObject* obj,MonoString* uri);
-
-extern MonoString *(*oGetString)(MonoObject *Instance, MonoString *str);
-
 extern int (*__sys_regmgr_call)(long, long, int*, int*, long);
 
 /* ================================= HOOKED MONO FUNCS ============================================= */
@@ -264,10 +197,6 @@ extern int (*__sys_regmgr_call)(long, long, int*, int*, long);
 extern  std::string UI3_dec;
 extern  std::string legacy_dec;
 extern  std::string appsystem_dll;
-extern  std::string uilib;
-extern  std::string Sysinfo;
-extern  std::string display_info;
-extern  std::string uilib_dll;
 
 extern MonoImage* pui_img;
 extern MonoImage* AppSystem_img;
@@ -280,12 +209,8 @@ MonoObject* CreateUIFont(int size, int style, int weight);
 MonoObject* CreateLabel(const char* name, float x, float y, const char* text, MonoObject* font, int horzAlign, int vertAlign, float r, float g, float b, float a);
 void Widget_Append_Child(MonoObject* widget, MonoObject* child);
 MonoObject* New_Object(MonoClass* Klass);
-MonoString *GetString_Hook(MonoObject *Instance, MonoString *str);
 MonoImage * getDLLimage(const char* dll_file);
-MonoString* CxmlUri_Hook(MonoObject* obj, MonoString* uri);
-bool Get_Running_App_TID(std::string& title_id, int& BigAppid);
 #include <onion/proc_query.h>
 #include <onion/platform.h>
-int ioctl_hook (int fd, unsigned long request, void *argp);
 int LaunchApp(MonoString* titleId, uint64_t* args, int argsSize, LaunchAppParam *param);
 /* ================================= HOOKED MONO FUNCS ============================================= */

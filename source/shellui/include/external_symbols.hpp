@@ -125,19 +125,6 @@ typedef struct
 #define SCE_NET_ADDR_STR_SIZE 18
 
 // Token: 0x02000064 RID: 100
-typedef enum SceNetIfListType
-{
-    // Token: 0x040002F7 RID: 759
-    SCE_NET_IF_LIST_TYPE_UNKNOWN,
-    // Token: 0x040002F8 RID: 760
-    SCE_NET_IF_LIST_TYPE_ETHERNET,
-    // Token: 0x040002F9 RID: 761
-    SCE_NET_IF_LIST_TYPE_WLAN,
-    // Token: 0x040002FA RID: 762
-    SCE_NET_IF_LIST_TYPE_BT,
-    // Token: 0x040002FB RID: 763
-    SCE_NET_IF_LIST_TYPE_PHONE
-} SceNetIfListType;
 
 typedef struct
 {

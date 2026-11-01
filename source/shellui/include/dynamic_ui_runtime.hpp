@@ -13,10 +13,4 @@ class Page;
 
 namespace onion::shellui::dynamic_ui {
 
-enum class DispatchResult {
-  NotOwned = 0,
-  Accepted,
-  Unavailable,
-};
-
 } // namespace onion::shellui::dynamic_ui

@@ -46,10 +46,6 @@ along with this program; see the file COPYING. If not, see
 std::string UI3_dec;
 std::string legacy_dec;
 std::string appsystem_dll;
-std::string uilib;
-std::string Sysinfo;
-std::string display_info;
-std::string uilib_dll;
 
 MonoImage* pui_img = nullptr;
 MonoImage* AppSystem_img = nullptr;
@@ -60,19 +56,6 @@ bool hooked = false;
 bool has_hv_bypass = false;
 
 extern "C" long ptr_syscall = 0;
-
-void __syscall() {
-  asm(".intel_syntax noprefix\n"
-      "  mov rax, rdi\n"
-      "  mov rdi, rsi\n"
-      "  mov rsi, rdx\n"
-      "  mov rdx, rcx\n"
-      "  mov r10, r8\n"
-      "  mov r8,  r9\n"
-      "  mov r9,  qword ptr [rsp + 8]\n"
-      "  call qword ptr [rip + ptr_syscall]\n"
-      "  ret\n");
-}
 
 void (*OnRender_orig)(MonoObject* instance);
 MonoObject* rootWidget = nullptr;

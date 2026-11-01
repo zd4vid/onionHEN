@@ -93,25 +93,6 @@ inline int overlay_font_pt(int font_size) {
   return kOverlayFontPtMedium;
 }
 
-inline void
-overlay_normalize_order(std::array<int, kOverlayMetricCount> &order) {
-  bool seen[kOverlayMetricCount] = {};
-  std::array<int, kOverlayMetricCount> out{};
-  int n = 0;
-  for (int metric : order) {
-    if (metric < 0 || metric >= kOverlayMetricCount || seen[metric])
-      continue;
-    seen[metric] = true;
-    out[n++] = metric;
-  }
-  for (int metric = 0; metric < kOverlayMetricCount; ++metric) {
-    if (seen[metric])
-      continue;
-    out[n++] = metric;
-  }
-  order = out;
-}
-
 inline constexpr int kFanAutomaticThresholdCelsius = 77;
 inline constexpr int kRestModeDelayDefaultSeconds = 10;
 
@@ -200,33 +181,6 @@ struct Settings {
 // Thread-safe process-local settings (daemon / util IPC + worker threads).
 // ShellUI may keep a plain Settings if UI work is single-threaded; prefer this
 // store when readers and writers can race.
-class SettingsStore {
-public:
-  SettingsStore() = default;
-  explicit SettingsStore(const Settings &s) : s_(s) {}
-
-  Settings snapshot() const {
-    std::lock_guard<std::mutex> lock(mu_);
-    return s_;
-  }
-
-  void store(const Settings &s) {
-    std::lock_guard<std::mutex> lock(mu_);
-    s_ = s;
-  }
-
-  /** Mutate under lock; returns a copy of the new value. */
-  template <typename Fn>
-  Settings update(Fn &&fn) {
-    std::lock_guard<std::mutex> lock(mu_);
-    fn(s_);
-    return s_;
-  }
-
-private:
-  mutable std::mutex mu_;
-  Settings s_{};
-};
 
 } // namespace onion
 

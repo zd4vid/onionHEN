@@ -123,8 +123,6 @@ typedef struct cJSON
     char *string;
 } cJSON;
 
-typedef int cJSON_bool;
-
 /* Limits how deeply nested arrays/objects can be before cJSON rejects to parse them.
  * This is to prevent stack overflows. */
 #ifndef CJSON_NESTING_LIMIT
@@ -134,7 +132,6 @@ typedef int cJSON_bool;
 /* When assigning an integer value, it needs to be propagated to valuedouble too. */
 #define cJSON_SetIntValue(object, number) ((object) ? (object)->valueint = (object)->valuedouble = (number) : (number))
 /* helper for the cJSON_SetNumberValue macro */
-CJSON_PUBLIC(double) cJSON_SetNumberHelper(cJSON *object, double number);
 #define cJSON_SetNumberValue(object, number) ((object != NULL) ? cJSON_SetNumberHelper(object, (double)number) : (number))
 
 /* If the object is not a boolean type this does nothing and returns cJSON_Invalid else it returns the new type*/

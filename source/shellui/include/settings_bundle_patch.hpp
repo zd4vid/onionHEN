@@ -13,4 +13,3 @@ General Public License for more details. */
 #pragma once
 
 /* Patch a decrypted NPXS40008 Settings RNPS payload in place. */
-void patch_settings_bundle(unsigned char *buffer, int size);

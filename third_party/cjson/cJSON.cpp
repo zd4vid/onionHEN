@@ -47,7 +47,6 @@
 
 void* malloc(size_t size);
 void free(void *ptr);
-void* realloc(void *ptr, size_t size);
 
 #ifdef ENABLE_LOCALES
 #include <locale.h>
@@ -123,15 +122,6 @@ static void * CJSON_CDECL internal_realloc(void *pointer, size_t size)
 #define static_strlen(string_literal) (sizeof(string_literal) - sizeof(""))
 
 /* get the decimal point character of the current locale */
-static unsigned char get_decimal_point(void)
-{
-#ifdef ENABLE_LOCALES
-    struct lconv *lconv = localeconv();
-    return (unsigned char) lconv->decimal_point[0];
-#else
-    return '.';
-#endif
-}
 
 /* check if the given size is left to read in a given parse buffer (starting with 1) */
 #define can_read(buffer, size) ((buffer != NULL) && (((buffer)->offset + size) <= (buffer)->length))
@@ -142,23 +132,6 @@ static unsigned char get_decimal_point(void)
 #define buffer_at_offset(buffer) ((buffer)->content + (buffer)->offset)
 
 /* don't ask me, but the original cJSON_SetNumberValue returns an integer or double */
-CJSON_PUBLIC(double) cJSON_SetNumberHelper(cJSON *object, double number)
-{
-    if (number >= INT_MAX)
-    {
-        object->valueint = INT_MAX;
-    }
-    else if (number <= (double)INT_MIN)
-    {
-        object->valueint = INT_MIN;
-    }
-    else
-    {
-        object->valueint = (int)number;
-    }
-
-    return object->valuedouble = number;
-}
 
 #define cjson_min(a, b) (((a) < (b)) ? (a) : (b))
 

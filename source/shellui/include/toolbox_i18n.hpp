@@ -14,8 +14,5 @@ namespace toolbox_i18n {
  * Look up a UI string by stable key.
  * Missing key returns the key itself (visible failure).
  */
-const char *tr(const char *key);
-
-std::string format(const char *key, ...);
 
 } // namespace toolbox_i18n
