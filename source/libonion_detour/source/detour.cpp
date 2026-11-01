@@ -131,21 +131,6 @@ bool compare_exchange_patch(uintptr_t address,
 
 } // namespace
 
-void ReadMemory(uint64_t address, void *buffer, int length) {
-  memcpy(buffer, reinterpret_cast<void *>(address), length);
-}
-
-void WriteMemory(uint64_t address, void *buffer, int length) {
-  memcpy(reinterpret_cast<void *>(address), buffer, length);
-}
-
-void PatchInJump(uint64_t address, void *destination) {
-  if (!address || !destination) {
-    return;
-  }
-  (void)DetourFunction(address, destination);
-}
-
 bool PrepareDetour(uint64_t address, void *destination, DetourHandle *handle) {
   if (!address || !destination || !handle) {
     return false;

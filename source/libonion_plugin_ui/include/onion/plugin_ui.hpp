@@ -11,14 +11,6 @@
 
 namespace onion::plugin_ui {
 
-inline constexpr uint32_t kDocumentMagic = 0x4449554Fu;
-inline constexpr uint16_t kWireVersion = 1;
-inline constexpr size_t kDocumentHeaderSize = 36;
-inline constexpr size_t kNodeHeaderSize = 60;
-inline constexpr size_t kMaxEncodedSize = 256 * 1024;
-inline constexpr size_t kMaxNodes = 256;
-inline constexpr size_t kMaxDepth = 8;
-
 enum class NodeKind : uint16_t {
   Page = 1,
   Menu = 2,
@@ -89,12 +81,6 @@ enum class Status {
   Busy,
 };
 
-Status decode_document(std::span<const uint8_t> encoded, Document &out,
-                       std::string *error = nullptr);
-Status encode_document(const Document &document, std::vector<uint8_t> &out,
-                       std::string *error = nullptr);
-Status validate_document(const Document &document, std::string *error = nullptr);
-
 using Handle = uint64_t;
 
 struct ContributionSnapshot {
@@ -142,33 +128,6 @@ struct BeginResult {
   TransferId transfer_id = 0;
 };
 
-enum class WireCommand : uint16_t {
-  RegisterBegin = 10,
-  RegisterChunk = 11,
-  RegisterCommit = 12,
-  RegisterAbort = 13,
-  Unregister = 14,
-  SetValue = 15,
-};
-
-struct WireResponse {
-  Status status = Status::InvalidArgument;
-  std::vector<uint8_t> data;
-};
-
-struct ActionEvent {
-  std::string owner;
-  Handle handle = 0;
-  uint64_t sequence = 0;
-  ValueType value_type = ValueType::None;
-  std::string contribution_id;
-  std::string page_id;
-  std::string node_id;
-  std::string value;
-};
-
-using SnapshotSink = void (*)(const RegistrySnapshot &snapshot, void *context);
-
 class RegistrationBroker {
 public:
   explicit RegistrationBroker(Registry &registry) : registry_(registry) {}
@@ -194,31 +153,6 @@ private:
   std::mutex mutex_;
   TransferId next_transfer_id_ = 1;
   std::vector<Transfer> transfers_;
-};
-
-/*
- * Parses SDK UI payloads for an owner already fixed by its connection session.
- */
-class ProtocolBroker {
-public:
-  explicit ProtocolBroker(Registry &registry);
-
-  void set_snapshot_sink(SnapshotSink sink, void *context);
-  WireResponse dispatch(std::string_view session_owner,
-                        uint16_t command, std::span<const uint8_t> payload);
-  Status dispatch_action(Handle handle, std::string_view node_id,
-                         std::string_view value, ActionEvent &out);
-  size_t disconnect(std::string_view session_owner);
-
-private:
-  void publish_snapshot();
-
-  Registry &registry_;
-  RegistrationBroker registrations_;
-  std::mutex sink_mutex_;
-  SnapshotSink snapshot_sink_ = nullptr;
-  void *snapshot_context_ = nullptr;
-  uint64_t next_action_sequence_ = 1;
 };
 
 } // namespace onion::plugin_ui

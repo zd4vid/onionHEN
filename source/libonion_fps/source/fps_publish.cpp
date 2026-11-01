@@ -57,12 +57,6 @@ bool publish_open() {
   return true;
 }
 
-void publish_close() {
-  if (g_map && g_map != MAP_FAILED)
-    munmap(g_map, ONION_FPS_SAMPLE_BYTES);
-  g_map = nullptr;
-}
-
 void publish(const OnionFpsSample &sample) {
   if (!publish_open())
     return;

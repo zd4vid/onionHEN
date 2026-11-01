@@ -50,9 +50,6 @@ std::string uilib;
 std::string Sysinfo;
 std::string display_info;
 std::string uilib_dll;
-std::string payloads_xml;
-std::string debug_settings_xml;
-std::string cheats_xml;
 
 MonoImage* pui_img = nullptr;
 MonoImage* AppSystem_img = nullptr;
@@ -61,8 +58,6 @@ MonoImage* react_common_img = nullptr;
 
 bool hooked = false;
 bool has_hv_bypass = false;
-bool is_6xx = false;
-bool is_3xx = false;
 
 extern "C" long ptr_syscall = 0;
 
@@ -80,9 +75,6 @@ void __syscall() {
 }
 
 void (*OnRender_orig)(MonoObject* instance);
-void (*oUserCustomElementReset)(MonoObject* instance, MonoObject* item) = nullptr;
-void (*oSettingPageStackOnPopping)(MonoObject* instance, MonoObject* outgoing,
-                                    MonoObject* incoming) = nullptr;
 MonoObject* rootWidget = nullptr;
 MonoObject* font = nullptr;
 void (*Orig_ReloadApp)(MonoString* str) = nullptr;
@@ -90,7 +82,6 @@ void (*Orig_ReloadApp)(MonoString* str) = nullptr;
 // Defined in prx_install / prx_overlay
 void ReloadApp(MonoString* str);
 void OnRender_Hook(MonoObject* instance);
-int KillAppWithReason_Hook(int appId, int reason);
 
 // ---------------------------------------------------------------------------
 // Init constants

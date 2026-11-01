@@ -103,5 +103,3 @@ struct ToolboxUiState {
   }
 
 };
-
-extern ToolboxUiState g_ui;

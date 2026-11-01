@@ -27,20 +27,4 @@ static_assert(kLogLevelDebug == static_cast<int>(ONION_LOG_DEBUG),
 static_assert(kLogLevelTrace == static_cast<int>(ONION_LOG_TRACE),
               "config log level drifted from onion_log_level");
 
-/**
- * Apply the configured threshold to the logger.
- *
- * Levels stripped by ONION_LOG_COMPILE_LEVEL cannot be restored here — asking
- * for trace in a release build still yields info — so the effective level is
- * reported back for the caller to log.
- */
-inline onion_log_level apply_log_settings(const Settings &s) {
-  onion_log_level want = static_cast<onion_log_level>(s.log_level);
-  if (want > ONION_LOG_COMPILE_LEVEL) {
-    want = static_cast<onion_log_level>(ONION_LOG_COMPILE_LEVEL);
-  }
-  onion_log_set_level(want);
-  return want;
-}
-
 } // namespace onion

@@ -35,8 +35,6 @@ extern "C" {
 /** Kernel/userland toast send — matches sceKernelSendNotificationRequest. */
 typedef int32_t (*onion_notify_send_fn)(int32_t device, void *req, size_t size,
                                         int32_t blocking);
-typedef int32_t (*onion_notify_rich_send_fn)(int32_t user_id, bool is_logged,
-                                             const char *payload);
 
 /**
  * Install the send implementation for this process.
@@ -45,23 +43,9 @@ typedef int32_t (*onion_notify_rich_send_fn)(int32_t user_id, bool is_logged,
  * Must be called before any onion_notify / notify().
  */
 void onion_notify_set_send(onion_notify_send_fn fn);
-void onion_notify_set_rich_send(onion_notify_rich_send_fn fn);
 
 void onion_notify_v(int show_watermark, const char *fmt, va_list ap);
 void onion_notify(int show_watermark, const char *fmt, ...);
-/**
- * Debug-style toast (SDK notify_debug): text only, no system icon.
- * Uses the same key + onion_notify_tr i18n path as onion_notify.
- * Pass stable notify.* keys from the i18n notifications catalog.
- */
-void onion_notify_debug_v(const char *fmt, va_list ap);
-void onion_notify_debug(const char *fmt, ...);
-void onion_notify_rich(const char *message, const char *sub_message,
-                       const char *icon_url, const char *preview_icon,
-                       const char *notification_id);
-/** Send a prebuilt rich JSON toast. Empty payload or send failure falls back
- *  to onion_notify(plain_key). Callers do not branch. */
-void onion_notify_try_rich(const char *payload, const char *plain_key);
 
 /**
  * Format a notification body: onion_notify_tr(key) then vsnprintf.

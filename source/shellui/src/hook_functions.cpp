@@ -37,38 +37,16 @@ extern "C"{
 #include <ps5/kernel.h>
 }
 
-extern bool is_6xx, is_3xx;
-/* ================================= ORIG HOOKED MONO FUNCS ============================================= */
-int (*oOnPress)(MonoObject* Instance, MonoObject* element, MonoObject* e) = nullptr;
-int (*oOnPreCreate)(MonoObject* Instance, MonoObject* element) = nullptr;
 MonoString* (*CxmlUri)(MonoObject* obj, MonoString* uri) = nullptr;
-uint64_t(*GetManifestResourceStream_Original)(uint64_t inst, MonoString* FileName) = nullptr;
-void (*DebugSettings_GetModel_Orig)(MonoObject* instance, MonoObject* param, MonoObject* promise) = nullptr;
-void (*ReactNavigatorManager_UpdateNavigationState_Orig)(MonoObject* instance, MonoObject* state) = nullptr;
-GamePadData (*GetData)(int deviceIndex) = nullptr;
-
-bool (*boot_orig)(MonoString* uri, int opt, MonoString* titleIdForBootAction) = nullptr;
-void (*OnShareButton_orig)(MonoObject* data) = nullptr;
-bool (*boot_orig_2)(MonoString* uri, int opt) = nullptr;
-
-void (*CaptureScreen_orig_old)(MonoObject * inst, int userId, long deviceId, int capType, MonoObject* capacityInfo) = nullptr;
-void (*CaptureScreen_orig_new)(MonoObject * inst, int userId, long deviceId, int capType, MonoString* format, MonoObject* capacityInfo) = nullptr;
-void (*createJson)(MonoObject*, MonoObject* array, MonoString* id, MonoString* label, MonoString* actionUrl, MonoString* actionId, MonoString* messageId, MonoObject* subMenu, bool enable) = nullptr;
 
 int (*__sys_regmgr_call)(long, long, int*, int*, long) = nullptr;
 
 MonoString *(*oGetString)(MonoObject *Instance, MonoString *str) = nullptr;
-int (*LaunchApp_orig)(MonoString* titleId, uint64_t* args, int argsSize, LaunchAppParam *param) = nullptr;
-
-/* ================================= HOOKED GLOBAL VARS ============================================= */
-MonoClass* MemoryStream_IO = nullptr;
 
 // UI runtime state: g_ui (shellui_state.hpp / shellui_globals.cpp)
 
 // widgets → shellui_overlay_widgets.cpp
 extern "C"{
-int sceShellCoreUtilIsUsbMassStorageMounted(int num);
-int sceNetSend(int sockfd, const void *buf, size_t len, int flags);
 }
 
 /** Create MonoString on the *calling* domain (UI thread may not be Root_Domain). */
@@ -230,14 +208,8 @@ MonoString * CxmlUri_Hook(MonoObject * Instance, MonoString * uri) {
   }
   return CxmlUri(Instance, uri);
 }
-MonoObject* MemoryStream_Instance = nullptr;
 
 
-// navigator → hook_navigator.cpp
-// manifest → hook_manifest.cpp
-extern "C" int sceKernelGetPs4SystemSwVersion(OrbisKernelSwVersion *);
-
-MonoMethod* set_value_method = nullptr;
 void CheckRunningOnMainThread() {
 	//notify("Main thread check called!");
 }

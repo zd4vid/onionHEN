@@ -38,10 +38,6 @@ along with this program; see the file COPYING. If not, see
 
 // Logging: the shared LOG_* macros from <onion/log.h>, included above.
 
-// Optional: host may install a notify sink (e.g. shellui bubble). Default: none.
-using OnionIpcNotifyFn = void (*)(const char *text);
-void onion_ipc_set_notify(OnionIpcNotifyFn fn);
-
 struct PluginInventoryItem {
   std::string plugin_id;
   std::string version;
@@ -58,97 +54,4 @@ struct SprxInventoryItem {
   int priority = 0;
   bool matches_current_target = false;
   bool loaded_for_current_target = false;
-};
-
-class IPC_Client {
-public:
-  IPC_Client(const IPC_Client &) = delete;
-  IPC_Client &operator=(const IPC_Client &) = delete;
-
-  // Two true singletons: crit (false) and util (true). Safe to call from
-  // concurrent contexts against different targets.
-  static IPC_Client &getInstance(bool is_util_daemon);
-
-  bool is_util() const { return util_daemon_; }
-
-  void set_recv_timeout_ms(int ms) {
-    recv_timeout_ms_.store(ms, std::memory_order_relaxed);
-  }
-  int recv_timeout_ms() const {
-    return recv_timeout_ms_.load(std::memory_order_relaxed);
-  }
-
-  // Low-level transport
-  int OpenConnection(const char *path);
-  bool IPCOpenConnection();
-  bool IPCOpenIfNotConnected();
-  int IPCReceiveData(IPCMessage &msg, std::string &ipc_msg);
-  int IPCSendData(const IPCMessage &msg);
-  int IPCCloseConnection();
-  bool IPCSendCommand(DaemonCommands cmd, std::string &ipc_msg1,
-                      std::string ipc_msg2 = "");
-
-  // High-level commands
-  int GetDaemonPid();
-  IPC_Ret ToggleSetting(DaemonCommands cmd, bool turn_on);
-  /** Push a fresh console system language to util for live re-apply. */
-  bool SetSystemLanguage(int language);
-  void KillDaemon();
-  /** Crit Unix IPC: util → restart ShellUI → daemon exit (BREW_SHUTDOWN_STACK). */
-  void ShutdownStack();
-  void ForceKillPID(int pid);
-  IPC_Ret CopyFile(std::string src, std::string dest);
-  IPC_Ret LaunchPayload(std::string payload_path, std::string tid);
-  bool GameVerFromTid(std::string tid, std::string &out_ver);
-  bool Remount(const char *src, const char *dest);
-  bool GetGameCheats(const std::string &tid, std::string &cheats,
-                     const std::string &mode, int pid = 0, int appid = 0,
-                     const std::string &process = {}, uint64_t generation = 0);
-  bool ToggleGameCheat(const std::string &session_id,
-                       const std::string &cheat_key, bool enabled,
-                       std::string &cheat_status);
-  bool DownloadCheats(const char *catalog, const char *mirror,
-                      std::string &out);
-  bool CheatSyncStatus(std::string &out);
-  bool CancelCheatSync(uint32_t task_id, std::string &out);
-  void Reload_Daemon_Settings();
-  bool Launch_Elfldr();
-  bool Set_Fan_Threshold(int temp, bool enabled);
-  /** Crit: inject ShellUI toolbox (BREW_ENABLE_TOOLBOX). */
-  bool EnableToolbox();
-  bool ListPlugins(std::vector<PluginInventoryItem> &plugins);
-  bool StartPlugin(const std::string &plugin_id);
-  bool StopPlugin(const std::string &plugin_id);
-  bool ReloadPlugin(const std::string &plugin_id);
-  bool DeletePlugin(const std::string &plugin_id);
-  bool SetPluginAutoStart(const std::string &plugin_id, bool enabled);
-  bool ListSprx(std::vector<SprxInventoryItem> &sprx);
-  bool SetSprxEnabled(const std::string &id, bool enabled);
-  /** Removes the catalog entry; it does not delete or unload the SPRX file. */
-  bool DeleteSprx(const std::string &id);
-
-  // Kept for call-site readability (matches historical public field).
-  // Prefer is_util(); do not reassign after construction.
-  const bool util_daemon;
-
-private:
-  explicit IPC_Client(bool util_daemon, int recv_timeout_ms);
-
-  bool util_daemon_;
-  int socket_fd_;
-  std::atomic<int> recv_timeout_ms_;
-  mutable std::mutex mu_;
-
-  const char *socket_path() const;
-  bool require_util(const char *what) const;
-  bool require_crit(const char *what) const;
-  bool PluginOperation(DaemonCommands command,
-                       const std::string &plugin_id);
-  bool SprxOperation(DaemonCommands command, const std::string &id,
-                     bool enabled = false);
-
-  /** Unlocked: full-frame send of IPCMessage. */
-  int send_frame_unlocked(const IPCMessage &msg);
-  /** Unlocked: full-frame recv into msg; forces NUL on payload. */
-  int recv_frame_unlocked(IPCMessage &msg);
 };

@@ -44,38 +44,17 @@ extern "C++" {
 
 namespace onion {
 
-// Canonical filesystem paths.
-inline constexpr const char *kConfigPathPrimary = "/data/OnionHEN/config.ini";
-inline constexpr const char *kConfigPathShellui = "/user/data/OnionHEN/config.ini";
-
 // Semantic config schema. This schema starts at version 1.
 inline constexpr int kSettingsSchemaVersion = 1;
 inline constexpr int kUiLanguageSystem = 0;
-inline constexpr int kUiLanguageZhHans = 1;
-inline constexpr int kUiLanguageEn = 2;
-inline constexpr int kUiLanguageAr = 3;
-inline constexpr int kUiLanguageZhHant = 4;
-inline constexpr int kUiLanguageJa = 5;
-inline constexpr int kUiLanguageFr = 6;
-inline constexpr int kUiLanguageDe = 7;
-inline constexpr int kUiLanguageKo = 8;
-inline constexpr int kUiLanguageEs = 9;
-inline constexpr int kUiLanguagePtBr = 10;
-inline constexpr int kUiLanguageIt = 11;
-inline constexpr int kUiLanguageRu = 12;
-inline constexpr int kUiLanguagePl = 13;
-inline constexpr int kUiLanguageTh = 14;
 
 inline constexpr int kStartupOpenNone = 0;
-inline constexpr int kStartupOpenHomeMenu = 1;
 
 // Mirrors onion_log_level from <onion/log.h>. Duplicated rather than included
 // so libonion_settings stays independent of libonion_platform; the processes
 // that bridge the two (see onion_apply_log_settings) static_assert that the
 // values still line up.
 inline constexpr int kCheatsMirrorAuto = 0;
-inline constexpr int kCheatsMirrorGithub = 1;
-inline constexpr int kCheatsMirrorCnb = 2;
 
 inline constexpr int kLogLevelOff = 0;
 inline constexpr int kLogLevelError = 1;
@@ -84,9 +63,7 @@ inline constexpr int kLogLevelInfo = 3;
 inline constexpr int kLogLevelDebug = 4;
 inline constexpr int kLogLevelTrace = 5;
 
-inline constexpr int kOverlayAlignLeft = 0;
 inline constexpr int kOverlayAlignCenter = 1;
-inline constexpr int kOverlayAlignRight = 2;
 
 inline constexpr int kOverlayMetricCount = 6;
 inline constexpr int kOverlayMetricFps = 0;
@@ -116,32 +93,6 @@ inline int overlay_font_pt(int font_size) {
   return kOverlayFontPtMedium;
 }
 
-inline const char *overlay_font_size_name(int font_size) {
-  if (font_size == kOverlayFontSmall)
-    return "small";
-  if (font_size == kOverlayFontLarge)
-    return "large";
-  return "medium";
-}
-
-inline const char *overlay_metric_name(int metric) {
-  switch (metric) {
-  case kOverlayMetricCpu:
-    return "cpu";
-  case kOverlayMetricGpu:
-    return "gpu";
-  case kOverlayMetricMemory:
-    return "memory";
-  case kOverlayMetricIp:
-    return "ip";
-  case kOverlayMetricFan:
-    return "fan";
-  case kOverlayMetricFps:
-  default:
-    return "fps";
-  }
-}
-
 inline void
 overlay_normalize_order(std::array<int, kOverlayMetricCount> &order) {
   bool seen[kOverlayMetricCount] = {};
@@ -161,54 +112,8 @@ overlay_normalize_order(std::array<int, kOverlayMetricCount> &order) {
   order = out;
 }
 
-inline int overlay_metric_position(
-    const std::array<int, kOverlayMetricCount> &order, int metric) {
-  for (int i = 0; i < kOverlayMetricCount; ++i) {
-    if (order[i] == metric)
-      return i + 1;
-  }
-  return metric + 1;
-}
-
-inline void overlay_move_metric(std::array<int, kOverlayMetricCount> &order,
-                                int metric, int position_1based) {
-  overlay_normalize_order(order);
-  if (metric < 0 || metric >= kOverlayMetricCount)
-    return;
-  int from = 0;
-  while (from < kOverlayMetricCount && order[from] != metric)
-    ++from;
-  int to = position_1based - 1;
-  if (to < 0)
-    to = 0;
-  if (to >= kOverlayMetricCount)
-    to = kOverlayMetricCount - 1;
-  if (from >= kOverlayMetricCount || from == to)
-    return;
-  const int id = order[from];
-  if (from < to) {
-    for (int i = from; i < to; ++i)
-      order[i] = order[i + 1];
-  } else {
-    for (int i = from; i > to; --i)
-      order[i] = order[i - 1];
-  }
-  order[to] = id;
-}
-
-inline constexpr int kFanThresholdMinCelsius = 0;
-inline constexpr int kFanThresholdMaxCelsius = 100;
 inline constexpr int kFanAutomaticThresholdCelsius = 77;
-inline constexpr int kRestModeDelayMinSeconds = 0;
-inline constexpr int kRestModeDelayMaxSeconds = 255;
 inline constexpr int kRestModeDelayDefaultSeconds = 10;
-inline constexpr int clamp_fan_threshold(int celsius) {
-  if (celsius < kFanThresholdMinCelsius)
-    return kFanThresholdMinCelsius;
-  if (celsius > kFanThresholdMaxCelsius)
-    return kFanThresholdMaxCelsius;
-  return celsius;
-}
 
 inline constexpr std::size_t kMaxAppJailbreakExactTitleIds = 20;
 inline constexpr std::size_t kMaxAppJailbreakTitleIdPrefixes = 20;
@@ -322,43 +227,6 @@ private:
   mutable std::mutex mu_;
   Settings s_{};
 };
-
-// Fill `out` with defaults then overlay values from the first readable config path.
-// Returns true if a file was loaded; false means defaults only (file missing).
-bool settings_load(Settings *out);
-
-// Load/save a single explicit path (host tests and tooling).
-bool settings_load_file(const char *path, Settings *out);
-bool settings_save_file(const char *path, const Settings &in);
-
-// Canonical toolbox.language token for a stored ui_lang value.
-const char *language_name(int ui_lang);
-
-// Serialize full schema to annotated INI text (no I/O).
-std::string settings_serialize(const Settings &in);
-
-// Serialize full schema. Writes every path that can be opened for write.
-// Returns true if at least one write succeeded.
-bool settings_save(const Settings &in);
-
-// Create default full-schema INI if no config exists on any path.
-// Returns true if a file was created (or already existed after load attempt).
-bool settings_ensure_default();
-
-// Path that was last successfully loaded (empty if defaults only).
-const char *settings_last_loaded_path();
-
-/**
- * Max st_mtime across both twin config paths (0 if neither exists).
- * Use for daemon reload gating so either path's write invalidates the cache.
- */
-time_t settings_config_newest_mtime();
-
-/**
- * True if any twin path has mtime strictly greater than `since`.
- * When no config file exists, returns false (nothing newer on disk).
- */
-bool settings_config_is_newer_than(time_t since);
 
 } // namespace onion
 

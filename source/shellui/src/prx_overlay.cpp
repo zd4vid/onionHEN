@@ -67,20 +67,12 @@ struct thread_usages
 
 int Thread_Count = 0;
 float Usage[8] = { 0 };
-float Average_Usage;
 Memory RAM;
 Memory VRAM;
 
 Proc_Stats Stat_Data[3072];
 thread_usages gThread_Data[2];
 
-
-extern "C" int sceLncUtilKillAppWithReason(int appId, int reason);
-
-int KillAppWithReason_Hook(int appId, int reason)
-{
-    return sceLncUtilKillAppWithReason(appId, reason);
-}
 
 void Get_Page_Table_Stats(int vm, int type, int* Used, int* Free, int* Total)
 {

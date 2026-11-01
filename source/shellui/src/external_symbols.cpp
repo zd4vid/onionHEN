@@ -22,23 +22,16 @@ MonoDomain* Root_Domain = nullptr;
 
 /* ====================================== Dynamic SystemService Symbols ===================================*/
 int (*sceSystemServiceGetAppIdOfRunningBigApp)(void) = nullptr;
-// Global function pointers
-SceLncUtilLaunchAppType sceLncUtilLaunchApp_dyn = nullptr;
 int (*sceSystemServiceParamGetInt)(int param_id, int* value) = nullptr;
 int (*sceSystemServiceGetAppTitleId)(int appid, char* titleid) = nullptr; 
 
 /* ====================================== Dynamic Appmsg Symbols ===================================*/
-
-uint32_t(*sceAppMessagingSendMsg)(uint32_t appId, uint32_t msgType, const void* msg, size_t msgLength, uint32_t flags) = nullptr;
-int (*sceAppMessagingReceiveMsg)(const AppMessage* msg) = nullptr;
 
 /* ====================================== Dynamic libkernel_sys Symbols ===================================*/
 int (*sceKernelGetProcessName)(int pid, char* name) = nullptr;
 int (*sceKernelGetCurrentFanDuty)(uint16_t* out_duty, uint64_t* out_chassis_info) = nullptr;
 int (*sceKernelMprotect)(void* addr, size_t len, int prot) = nullptr;
 int (*sceKernelDebugOutText)(int DBG_CHANNEL, const char* text) = nullptr;
-//  int (*close_alt)(int fd) = nullptr;
-int (*sceKernelSleep_alt)(int seconds) = nullptr;
 //  ssize_t (*write_alt)(int fd, const void* buf, size_t count) = nullptr;
 int (*sceKernelMkdir)( const char* path,int mode) = nullptr;
 int (*sceKernelSendNotificationRequest)(int unk1, OrbisNotificationRequest* req, int size, int unk2) = nullptr;
@@ -82,7 +75,6 @@ void (*mono_field_static_set_value)(MonoVTable* vt, MonoClassField* field, void*
 MonoVTable* (*mono_class_vtable)(MonoDomain* domain, MonoClass* klass) = nullptr;
 MonoImage* (*mono_image_open_from_data)(char* data, uint32_t data_len, int need_copy, MonoImageOpenStatus* status) = nullptr;
 MonoAssembly* (*mono_assembly_load_from)(MonoImage* image, const char* fname, MonoImageOpenStatus* status) = nullptr;
-void (*setenv)(const char*, const char*, int) = nullptr;
 MonoDomain* (*mono_domain_get)() = nullptr;
 void (*mono_set_dirs)(const char*, const char*) = nullptr;
 void (*mono_assembly_setrootdir)(const char*) = nullptr;

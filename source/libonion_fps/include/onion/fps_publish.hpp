@@ -7,7 +7,6 @@ namespace onion {
 namespace fps {
 
 bool publish_open();
-void publish_close();
 void publish(const OnionFpsSample &sample);
 
 } // namespace fps

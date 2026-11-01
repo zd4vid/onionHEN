@@ -33,4 +33,3 @@ struct MonoImage;
 
 void patch_homeui_top_nav(unsigned char *buffer, int *size_ptr,
                           int buffer_capacity);
-void install_homeui_top_nav_hooks(MonoImage *react_pui);

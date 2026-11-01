@@ -113,16 +113,6 @@ struct qm_trace {
         int prevline;
 };
 
-size_t countof(uint8_t array);
-
-static inline struct thread* curthread(void) {
-        struct thread* td;
-
-        __asm__ __volatile__ ("mov %0, %%gs:0" : "=r"(td));
-
-        return td;
-}
-
 struct lock_object {
         const char* lo_name;
         uint32_t lo_flags;
@@ -142,17 +132,9 @@ struct mtx {
 
 typedef uint64_t vm_offset_t;
 
-struct fpu_kern_ctx;
-
 enum uio_rw {
         UIO_READ,
         UIO_WRITE
-};
-
-enum uio_seg {
-        UIO_USERSPACE,          /* from user data space */
-        UIO_SYSSPACE,           /* from system space */
-        UIO_USERISPACE          /* from user I space */
 };
 
 
@@ -178,14 +160,6 @@ TYPE_END();
 TYPE_BEGIN(struct vmspace, 0x250);
         TYPE_FIELD(struct vm_map vm_map, 0);
 TYPE_END();
-
-struct proc_vm_map_entry {
-        char name[32];
-        vm_offset_t start;
-        vm_offset_t end;
-        vm_offset_t offset;
-        uint16_t prot;
-};
 
 
 TYPE_BEGIN(struct uio, 0x30);

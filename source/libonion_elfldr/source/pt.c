@@ -169,16 +169,6 @@ pt_copyin(pid_t pid, const void* buf, intptr_t addr, size_t len) {
 }
 
 
-int
-pt_setchar(pid_t pid, intptr_t addr, char val) {
-  return pt_copyin(pid, &val, addr, sizeof(val));
-}
-
-
-int
-pt_setshort(pid_t pid, intptr_t addr, short val) {
-  return pt_copyin(pid, &val, addr, sizeof(val));
-}
 
 
 int
@@ -187,45 +177,8 @@ pt_setlong(pid_t pid, intptr_t addr, long val) {
 }
 
 
-int
-pt_copyout(pid_t pid, intptr_t addr, void* buf, size_t len) {
-  struct ptrace_io_desc iod = {
-    .piod_op = PIOD_READ_D,
-    .piod_offs = (void*)addr,
-    .piod_addr = buf,
-    .piod_len = len};
-  return sys_ptrace(PT_IO, pid, (caddr_t)&iod, 0);
-}
 
 
-char
-pt_getchar(pid_t pid, intptr_t addr) {
-  char val = 0;
-
-  pt_copyout(pid, addr, &val, sizeof(val));
-
-  return val;
-}
-
-
-short
-pt_getshort(pid_t pid, intptr_t addr) {
-  short val = 0;
-
-  pt_copyout(pid, addr, &val, sizeof(val));
-
-  return val;
-}
-
-
-long
-pt_getlong(pid_t pid, intptr_t addr) {
-  long val = 0;
-
-  pt_copyout(pid, addr, &val, sizeof(val));
-
-  return val;
-}
 
 
 long
@@ -462,34 +415,9 @@ pt_setsockopt(pid_t pid, int fd, int level, int optname, intptr_t optval,
 }
 
 
-int
-pt_close(pid_t pid, int fd) {
-  return (int)pt_syscall(pid, SYS_close, fd);
-}
 
 
-int
-pt_bind(pid_t pid, int sockfd, intptr_t addr, uint32_t addrlen) {
-  return (int)pt_syscall(pid, SYS_bind, sockfd, addr, addrlen);
-}
 
-
-ssize_t
-pt_recvmsg(pid_t pid, int fd, intptr_t msg, int flags) {
-  return (int)pt_syscall(pid, SYS_recvmsg, fd, msg, flags);
-}
-
-
-int
-pt_dup2(pid_t pid, int oldfd, int newfd) {
-  return (int)pt_syscall(pid, SYS_dup2, oldfd, newfd);
-}
-
-
-int
-pt_rdup(pid_t pid, pid_t other_pid, int fd) {
-  return (int)pt_syscall(pid, 0x25b, other_pid, fd);
-}
 
 
 int
@@ -504,12 +432,4 @@ pt_errno(pid_t pid) {
   intptr_t faddr = pt_resolve(pid, "9BcDykPmo1I");
   intptr_t addr = pt_call(pid, faddr);
   return pt_getint(pid, addr);
-}
-
-
-intptr_t
-pt_sceKernelGetProcParam(pid_t pid) {
-  intptr_t faddr = pt_resolve(pid, "959qrazPIrg");
-
-  return pt_call(pid, faddr);
 }

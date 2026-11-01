@@ -41,8 +41,6 @@ uint32_t get_shellcode_size();
 // Loader specifics
 //
 int inject_elf(struct proc* proc, void* elf);
-int create_remote_thread(pid_t pid, uintptr_t target_address, uintptr_t parameters);
-module_info_t* load_remote_library(pid_t pid, const char* library_path, const char* library_name);
 void init_remote_function_pointers(pid_t pid);
 // void shellcode_start(pid_t pid, uint64_t target_address);
 

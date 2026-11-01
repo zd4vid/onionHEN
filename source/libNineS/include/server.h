@@ -10,5 +10,3 @@
 #include <unistd.h>
 
 #define SOCK_BUFF_SIZE 0x1000
-
-int start_server(int port, void(*callback)(int fd, void* data, ssize_t data_size));

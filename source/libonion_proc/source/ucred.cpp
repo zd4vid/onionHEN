@@ -63,12 +63,3 @@ extern "C" uint8_t* jailbreak_process(pid_t pid)
 }
 
 
-//
-// Restore
-//
-extern "C" void jail_process(pid_t pid, uint8_t* old_ucred)
-{
-    uintptr_t ucred = kernel_get_proc_ucred(pid);
-    kernel_copyin(old_ucred, ucred, UCRED_SIZE);
-}
-

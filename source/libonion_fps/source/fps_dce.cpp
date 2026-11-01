@@ -38,24 +38,6 @@ void set_status(DceSampleStatus *out, DceSampleStatus status) {
 
 } // namespace
 
-const char *dce_sample_status_name(DceSampleStatus status) {
-  switch (status) {
-  case DceSampleStatus::NotAttempted:
-    return "not-attempted";
-  case DceSampleStatus::Ok:
-    return "ok";
-  case DceSampleStatus::InvalidArgument:
-    return "invalid-argument";
-  case DceSampleStatus::Unavailable:
-    return "unavailable";
-  case DceSampleStatus::OpenFailed:
-    return "open-failed";
-  case DceSampleStatus::IoctlFailed:
-    return "ioctl-failed";
-  }
-  return "unknown";
-}
-
 DceSource::~DceSource() { close(); }
 
 const char *DceSource::request_abi_name() const {

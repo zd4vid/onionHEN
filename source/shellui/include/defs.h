@@ -40,6 +40,3 @@ along with this program; see the file COPYING. If not, see
 #define libSceKernelHandle 0x2001
 #define KERNEL_DLSYM(handle, sym) \
     (*(void**)&sym=(void*)kernel_dynlib_dlsym(-1, handle, #sym))
-
-
-typedef void* ScePthread;

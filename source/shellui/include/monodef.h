@@ -21,28 +21,13 @@ along with this program; see the file COPYING. If not, see
 #define IOVEC_SIZE(x) (sizeof(x) / sizeof(struct iovec))
 
 
-typedef int            gboolean;
-typedef int            gint;
 typedef unsigned int   guint;
-typedef short          gshort;
-typedef unsigned short gushort;
-typedef long           glong;
-typedef unsigned long  gulong;
 typedef void* gpointer;
-typedef const void* gconstpointer;
-typedef char           gchar;
-typedef unsigned char  guchar;
 
-typedef int8_t              gint8;
 typedef uint8_t             guint8;
-typedef int16_t             gint16;
 typedef uint16_t            guint16;
 typedef int32_t             gint32;
 typedef uint32_t            guint32;
-typedef int64_t             gint64;
-typedef uint64_t            guint64;
-typedef float               gfloat;
-typedef double              gdouble;
 typedef uint16_t            gunichar2;
 
 typedef enum {
@@ -71,7 +56,6 @@ struct MonoMethodSignature;
 struct MonoMethodDesc;
 struct MonoClassField;
 struct MonoProperty;
-struct MonoEvent;
 struct MonoThreadsSync;
 struct MonoThread;
 struct MonoRuntimeGenericContext;
@@ -325,43 +309,6 @@ struct MonoMethod {
 	*/
 };
 
-typedef void MonoMethodHeader;
-
-struct MonoMethodNormal {
-	struct MonoMethod method;
-	MonoMethodHeader* header;
-};
-
-struct MonoMethodPInvoke {
-	struct MonoMethod method;
-	gpointer addr;
-	/* add marshal info */
-	guint16 piflags;  /* pinvoke flags */
-	guint16 implmap_idx;  /* index into IMPLMAP */
-};
-
-
-struct MonoGenericInst {
-	guint id;			/* unique ID for debugging */
-	guint type_argc : 22;	/* number of type arguments */
-	guint is_open : 1;	/* if this is an open type */
-	struct MonoType* type_argv[MONO_ZERO_LEN_ARRAY];
-};
-
-struct MonoGenericContext {
-	struct MonoGenericInst* class_inst;
-	struct MonoGenericInst* method_inst;
-};
-
-struct MonoMethodInflated {
-	union {
-		struct MonoMethod method;
-		struct MonoMethodNormal normal;
-		struct MonoMethodPInvoke pinvoke;
-	} method;
-	struct MonoMethod* declaring;		/* the generic method definition. */
-	struct MonoGenericContext context;	/* The current instantiation */
-};
 
 
 
@@ -377,8 +324,6 @@ extern "C" {
 		type *__p = (type *) mono_array_addr ((array), type, (index));	\
 		*__p = (value);	\
 	} while (0)
-
-int replace_all(unsigned char * buffer, int * buffer_size, int buffer_capacity, const char * target, const char * replacement);
 
 #ifdef __cplusplus
 }

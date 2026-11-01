@@ -13,14 +13,6 @@
 #define DAEMON_BUFF_MAX 0x1000
 
 
-enum class IPC_Ret : int {
-  NO_ERROR = 0,
-  INVALID = -1,
-  // Distinct from INVALID so callers can tell "wrong daemon" from "op failed".
-  OPERATION_FAILED = -2,
-  DEFAULT_RET = -1337
-};
-
 /* Underlying type is unsigned: several stable opcodes use the high bit set. */
 enum DaemonCommands : unsigned int {
   BREW_TEST_CONNECTION = 0x9000000u,
@@ -110,10 +102,3 @@ enum DaemonCommands : unsigned int {
 #define ONION_CTRL_TCP_MAGIC 0x4F4E494Fu
 /** TCP cmd: full stack shutdown (util + ShellUI + daemon). */
 #define ONION_CTRL_TCP_CMD_SHUTDOWN 1u
-
-struct IPCMessage {
-  int magic = 0xDEADBABE;
-  enum DaemonCommands cmd;
-  int error = 0;
-  char msg[DAEMON_BUFF_MAX];
-};

@@ -22,20 +22,10 @@
 #define SCE_REGMGR_INT_SIZE 4
 #define SCE_REGMGR_ERROR_PRM_REGID 0x800D0203
 
-typedef struct {
-    char key[MAX_LINE];
-    char value[MAX_LINE];
-} KeyValue;
-
 static const std::string base64_chars =
 "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 "abcdefghijklmnopqrstuvwxyz"
 "0123456789+/";
-
-typedef struct IniParser_t {
-    KeyValue pairs[MAX_PAIRS];
-    int count = 0;
-} IniParser;
 
 enum RemoveWidget {
     REMOVE_GPU_OVERLAY,
@@ -89,34 +79,6 @@ typedef struct PayloadEntry {
     std::string version;
     OnionPayloadConfig config{};
 } PayloadEntry;
-
-// all_cpu_usage: overlay.cpu_usage_mode=per_core (config.ini)
-enum Cheats_Shortcut{
-    CHEATS_SC_OFF = 0,
-    R3_L3,
-    L2_TRIANGLE,
-    LONG_OPTIONS,
-    CHEATS_LONG_SHARE,
-    CHEATS_SINGLE_SHARE,
- };
-
- enum Toolbox_Shortcut{
-    TOOLBOX_SC_OFF = 0,
-    L2_R3,
-    TOOLBOX_LONG_SHARE,
-    TOOLBOX_SINGLE_SHARE,
- };
-
- /**
-  * Vertical edge for the Game++-style single-row monitor bar.
-  * Values 1/3 keep the legacy TR/BR mapping → same as top/bottom.
-  */
- enum overlay_positions{
-    OVERLAY_POS_TOP_LEFT = 0,
-    OVERLAY_POS_TOP_RIGHT,
-    OVERLAY_POS_BOTTOM_LEFT,
-    OVERLAY_POS_BOTTOM_RIGHT
- };
 
 extern onion::Settings g_settings;
 

@@ -7,6 +7,3 @@
 #pragma once
 
 #include <onion/ipc_client.hpp>
-
-// shellui-only IPC-adjacent globals
-extern bool cheats_shortcut_activate;

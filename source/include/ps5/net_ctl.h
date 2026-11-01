@@ -44,8 +44,6 @@ typedef struct SceNetEtherAddr {
   uint8_t data[SCE_NET_ETHER_ADDR_LEN];
 } SceNetEtherAddr;
 
-typedef void (*SceNetCtlCallback)(int eventType, void *arg);
-
 typedef union SceNetCtlInfo {
   uint32_t device;
   SceNetEtherAddr ether_addr;
@@ -71,7 +69,6 @@ typedef union SceNetCtlInfo {
 } SceNetCtlInfo;
 
 int32_t sceNetCtlGetInfo(int32_t code, SceNetCtlInfo *info);
-void sceNetCtlTerm(void);
 
 #ifdef __cplusplus
 }

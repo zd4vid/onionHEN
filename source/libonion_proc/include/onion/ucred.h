@@ -38,7 +38,6 @@ extern "C" {
 uintptr_t set_ucred_to_ptrace(void);
 uintptr_t set_proc_authid(pid_t pid, uintptr_t new_authid);
 uint8_t* jailbreak_process(pid_t pid);
-void jail_process(pid_t pid, uint8_t* ucred);
 
 #ifdef __cplusplus
 }

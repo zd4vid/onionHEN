@@ -19,8 +19,6 @@ enum class DceSampleStatus : uint8_t {
   IoctlFailed,
 };
 
-const char *dce_sample_status_name(DceSampleStatus status);
-
 class DceSource {
 public:
   DceSource() = default;

@@ -47,7 +47,4 @@ void AbortDetour(DetourHandle *handle);
 bool InstallDetour(uint64_t address, void *destination,
                    void **original_storage);
 
-/* Compatibility API for hooks that never call an original function. */
-void PatchInJump(uint64_t address, void *destination);
 void *DetourFunction(uint64_t address, void *destination);
-void WriteMemory(uint64_t address, void *buffer, int length);

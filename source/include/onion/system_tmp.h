@@ -31,13 +31,3 @@
 #define ONION_SYSTEM_TMP_APP_LAUNCHED ONION_SYSTEM_TMP_ROOT "/app_launched"
 #define ONION_SYSTEM_TMP_PATCH_PLUGIN ONION_SYSTEM_TMP_ROOT "/patch_plugin"
 #define ONION_SYSTEM_TMP_FPS_SAMPLE ONION_SYSTEM_TMP_ROOT "/fps_sample"
-
-static inline bool onion_system_tmp_pid_path(char *out, size_t out_sz,
-                                             const char *key) {
-  if (!out || out_sz == 0) {
-    return false;
-  }
-  int n = snprintf(out, out_sz, "%s/%s.PID", ONION_SYSTEM_TMP_PID_ROOT,
-                   key ? key : "");
-  return n > 0 && (size_t)n < out_sz;
-}
